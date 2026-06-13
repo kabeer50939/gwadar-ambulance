@@ -1,0 +1,203 @@
+{
+  "users": [
+    {
+      "id": "usr-chairman-01",
+      "name": "Chairman GASG",
+      "username": "chairman",
+      "phone": "03330001122",
+      "password": "chairman123",
+      "role": "chairman"
+    },
+    {
+      "id": "usr-disp-01",
+      "name": "Saleem Shah",
+      "username": "saleem",
+      "phone": "+92 300 0000000",
+      "password": "dispatch123",
+      "role": "dispatcher"
+    },
+    {
+      "id": "usr-driver-01",
+      "name": "Kabeer Khan",
+      "username": "kabeer",
+      "phone": "+92 300 1234567",
+      "password": "driver123",
+      "role": "driver",
+      "ambulance_id": "amb-01"
+    },
+    {
+      "id": "usr-driver-02",
+      "name": "Sajid Baloch",
+      "username": "sajid",
+      "phone": "+92 312 9876543",
+      "password": "driver123",
+      "role": "driver",
+      "ambulance_id": "amb-02"
+    },
+    {
+      "id": "usr-driver-03",
+      "name": "Zarif Gwadari",
+      "username": "zarif",
+      "phone": "+92 333 4567890",
+      "password": "driver123",
+      "role": "driver",
+      "ambulance_id": "amb-03"
+    },
+    {
+      "id": "usr-driver-04",
+      "name": "Meer Jan",
+      "username": "meer",
+      "phone": "+92 321 2468135",
+      "password": "driver123",
+      "role": "driver",
+      "ambulance_id": "amb-04"
+    },
+    {
+      "id": "usr-driver-05",
+      "name": "Yousuf Ali",
+      "username": "yousuf",
+      "phone": "+92 345 1357924",
+      "password": "driver123",
+      "role": "driver",
+      "ambulance_id": "amb-05"
+    }
+  ],
+  "ambulances": [
+    {
+      "id": "amb-01",
+      "vehicle_number": "GWD-7861",
+      "driver_name": "Kabeer Khan",
+      "driver_phone": "+92 300 1234567",
+      "status": "Available",
+      "latitude": 25.1225,
+      "longitude": 62.321,
+      "bearing": 0,
+      "siren": false
+    },
+    {
+      "id": "amb-02",
+      "vehicle_number": "GWD-4321",
+      "driver_name": "Sajid Baloch",
+      "driver_phone": "+92 312 9876543",
+      "status": "Available",
+      "latitude": 25.138,
+      "longitude": 62.302,
+      "bearing": 0
+    },
+    {
+      "id": "amb-03",
+      "vehicle_number": "GWD-8899",
+      "driver_name": "Zarif Gwadari",
+      "driver_phone": "+92 333 4567890",
+      "status": "Available",
+      "latitude": 25.115,
+      "longitude": 62.335,
+      "bearing": 0
+    },
+    {
+      "id": "amb-04",
+      "vehicle_number": "GWD-1122",
+      "driver_name": "Meer Jan",
+      "driver_phone": "+92 321 2468135",
+      "status": "Available",
+      "latitude": 25.128,
+      "longitude": 62.348,
+      "bearing": 0
+    },
+    {
+      "id": "amb-05",
+      "vehicle_number": "GWD-5566",
+      "driver_name": "Yousuf Ali",
+      "driver_phone": "+92 345 1357924",
+      "status": "Available",
+      "latitude": 25.106,
+      "longitude": 62.328,
+      "bearing": 0
+    }
+  ],
+  "hospitals": [
+    {
+      "id": "hosp-01",
+      "name": "Gwadar Indus Hospital (Pak-China Friendship)",
+      "latitude": 25.1225,
+      "longitude": 62.345,
+      "contact_number": "+92 86 4211111",
+      "available_beds": 15,
+      "total_beds": 120,
+      "icu_ventilators": 8,
+      "facilities": [
+        "Emergency Care",
+        "ICU",
+        "Surgery",
+        "Pediatrics",
+        "Trauma Center"
+      ]
+    },
+    {
+      "id": "hosp-02",
+      "name": "GDA Hospital (Gwadar Development Authority)",
+      "latitude": 25.138,
+      "longitude": 62.321,
+      "contact_number": "+92 86 4211222",
+      "available_beds": 8,
+      "total_beds": 50,
+      "icu_ventilators": 3,
+      "facilities": [
+        "Emergency Care",
+        "Outpatient Clinic",
+        "Maternity Ward",
+        "Laboratory"
+      ]
+    },
+    {
+      "id": "hosp-03",
+      "name": "DHQ Hospital Gwadar",
+      "latitude": 25.116,
+      "longitude": 62.324,
+      "contact_number": "+92 86 4210080",
+      "available_beds": 5,
+      "total_beds": 60,
+      "icu_ventilators": 2,
+      "facilities": [
+        "General Emergency",
+        "X-Ray",
+        "Pharmacy",
+        "Operation Theater"
+      ]
+    },
+    {
+      "id": "hosp-04",
+      "name": "Red Crescent Medical Center",
+      "latitude": 25.128,
+      "longitude": 62.308,
+      "contact_number": "+92 86 4210456",
+      "available_beds": 4,
+      "total_beds": 25,
+      "icu_ventilators": 0,
+      "facilities": [
+        "First Aid",
+        "Ambulance Station",
+        "Pharmacy"
+      ]
+    }
+  ],
+  "requests": [
+    {
+      "id": "0f6c8f8e-c595-4f86-8dc3-dccc8a7fe125",
+      "citizen_id": "citizen-session-1781388853145-f5fba6g",
+      "citizen_name": "Citizen",
+      "citizen_phone": "03327579515",
+      "emergency_type": "Cardiac Arrest",
+      "status": "En Route",
+      "latitude": 25.125127922284463,
+      "longitude": 62.3295424162707,
+      "location_name": "Live GPS Location",
+      "assigned_ambulance_id": "amb-01",
+      "assigned_hospital_id": "hosp-03",
+      "chat_history": [],
+      "voice_recordings": [],
+      "created_at": "2026-06-13T22:14:38.193Z",
+      "completed_at": null
+    }
+  ]
+}
