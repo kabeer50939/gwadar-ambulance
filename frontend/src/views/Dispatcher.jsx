@@ -21,6 +21,23 @@ export default function Dispatcher({
   const [selectedHospitalId, setSelectedHospitalId] = useState('');
   const [assignError, setAssignError] = useState(null);
   const [assignSuccess, setAssignSuccess] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [isEditingAssignment, setIsEditingAssignment] = useState(false);
+
+  // Fetch drivers list
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${BACKEND_URL}/api/staff`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => {
+        const driverList = data.filter(s => s.role === 'driver');
+        setDrivers(driverList);
+      })
+      .catch(() => setDrivers([]));
+  }, [token]);
 
   // Call Center Form State (Operator creating request)
   const [showCallCenterForm, setShowCallCenterForm] = useState(false);
@@ -174,15 +191,31 @@ export default function Dispatcher({
     return nearest;
   };
 
+  const isDriverBusy = (driverId) => {
+    return requests.some(r => r.assigned_driver_id === driverId && 
+      r.status !== 'Completed' && 
+      r.status !== 'Completed - Awaiting Verification' && 
+      r.id !== (selectedRequest ? selectedRequest.id : ''));
+  };
+
+  const isAmbulanceBusy = (ambId) => {
+    return requests.some(r => r.assigned_ambulance_id === ambId && r.status !== 'Completed' && r.id !== (selectedRequest ? selectedRequest.id : ''));
+  };
+
   const nearestAmbulance = selectedRequest ? getNearestAvailableAmbulance(selectedRequest) : null;
 
   // Set default assignments when selectedRequest changes
   useEffect(() => {
     if (selectedRequest) {
+      setIsEditingAssignment(false);
       if (selectedRequest.status === 'Pending') {
         const nearest = getNearestAvailableAmbulance(selectedRequest);
-        setManualAmbulanceId(nearest ? nearest.id : '');
+        const ambId = nearest ? nearest.id : '';
+        setManualAmbulanceId(ambId);
         
+        // No pre-fixed linked driver; dispatcher manually selects from available drivers
+        setSelectedDriverId('');
+
         // Auto-select nearest hospital
         if (hospitals.length > 0) {
           let closestHosp = hospitals[0];
@@ -205,10 +238,13 @@ export default function Dispatcher({
         }
       } else {
         setManualAmbulanceId(selectedRequest.assigned_ambulance_id || '');
+        setSelectedDriverId(selectedRequest.assigned_driver_id || '');
         setSelectedHospitalId(selectedRequest.assigned_hospital_id || '');
       }
     }
-  }, [selectedRequest, ambulances, hospitals]);
+  }, [selectedRequest, ambulances, hospitals, drivers]);
+
+
 
   const handleAssign = async () => {
     if (!selectedRequest || !manualAmbulanceId) return;
@@ -222,6 +258,7 @@ export default function Dispatcher({
         headers: authHeaders,
         body: JSON.stringify({
           ambulance_id: manualAmbulanceId,
+          driver_id: selectedDriverId || null,
           hospital_id: selectedHospitalId || null
         })
       });
@@ -239,6 +276,24 @@ export default function Dispatcher({
       triggerFetch();
     } catch (err) {
       setAssignError(err.message);
+    }
+  };
+
+  const handleResolveAndComplete = async () => {
+    if (!selectedRequest) return;
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/requests/${selectedRequest.id}/status`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ status: 'Completed' })
+      });
+      if (response.ok) {
+        const result = await response.json();
+        setSelectedRequest(result.request);
+        triggerFetch();
+      }
+    } catch (err) {
+      console.error("Failed to complete request:", err);
     }
   };
 
@@ -641,24 +696,26 @@ export default function Dispatcher({
               )}
 
               {/* Operator Dispatch Assign Console */}
-              {selectedRequest.status === 'Pending' ? (
+              {selectedRequest.status === 'Pending' || isEditingAssignment ? (
                 <div style={{ background: 'rgba(0,0,0,0.01)', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   
-                  {nearestAmbulance ? (
-                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid rgba(22, 163, 74, 0.15)', padding: '0.4rem', borderRadius: '6px', color: '#15803d', fontSize: '0.75rem' }}>
-                      <ShieldCheck size={14} />
-                      <span>
-                        Nearest unit: <b>{nearestAmbulance.vehicle_number}</b> ({nearestAmbulance.driver_name}) is <b>{nearestAmbulance.distance_km.toFixed(2)} km</b> away.
-                      </span>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', background: 'rgba(249, 115, 22, 0.05)', border: '1px solid rgba(249, 115, 22, 0.15)', padding: '0.4rem', borderRadius: '6px', color: '#c2410c', fontSize: '0.75rem' }}>
-                      <AlertTriangle size={14} />
-                      <span>No available ambulances in Gwadar online.</span>
-                    </div>
+                  {selectedRequest.status === 'Pending' && (
+                    nearestAmbulance ? (
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid rgba(22, 163, 74, 0.15)', padding: '0.4rem', borderRadius: '6px', color: '#15803d', fontSize: '0.75rem' }}>
+                        <ShieldCheck size={14} />
+                        <span>
+                          Nearest unit: <b>{nearestAmbulance.vehicle_number}</b> ({nearestAmbulance.driver_name}) is <b>{nearestAmbulance.distance_km.toFixed(2)} km</b> away.
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', background: 'rgba(249, 115, 22, 0.05)', border: '1px solid rgba(249, 115, 22, 0.15)', padding: '0.4rem', borderRadius: '6px', color: '#c2410c', fontSize: '0.75rem' }}>
+                        <AlertTriangle size={14} />
+                        <span>No available ambulances in Gwadar online.</span>
+                      </div>
+                    )
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem' }}>Ambulance Unit</label>
                       <select
@@ -668,11 +725,36 @@ export default function Dispatcher({
                         onChange={e => setManualAmbulanceId(e.target.value)}
                       >
                         <option value="">Select unit...</option>
-                        {ambulances.map(amb => (
-                          <option key={amb.id} value={amb.id} disabled={amb.status !== 'Available'}>
-                            {amb.vehicle_number} - {amb.driver_name} ({amb.status})
-                          </option>
-                        ))}
+                        {ambulances.map(amb => {
+                          const busy = isAmbulanceBusy(amb.id);
+                          const isDisabled = (amb.status !== 'Available' || busy) && amb.id !== selectedRequest?.assigned_ambulance_id;
+                          return (
+                            <option key={amb.id} value={amb.id} disabled={isDisabled}>
+                              {amb.vehicle_number} ({amb.model || 'No Model'}){busy ? ' (On Trip)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem' }}>Assigned Driver</label>
+                      <select
+                        className="form-input"
+                        style={{ padding: '0.35rem', fontSize: '0.8rem' }}
+                        value={selectedDriverId}
+                        onChange={e => setSelectedDriverId(e.target.value)}
+                      >
+                        <option value="">Select driver...</option>
+                        {drivers.map(drv => {
+                          const busy = isDriverBusy(drv.id);
+                          const isDisabled = busy && drv.id !== selectedRequest?.assigned_driver_id;
+                          return (
+                            <option key={drv.id} value={drv.id} disabled={isDisabled}>
+                              {drv.name}{busy ? ' (On Trip)' : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
 
@@ -686,7 +768,7 @@ export default function Dispatcher({
                       >
                         <option value="">Select hospital...</option>
                         {hospitals.map(hosp => (
-                          <option key={hosp.id} value={hosp.id} disabled={hosp.available_beds === 0}>
+                          <option key={hosp.id} value={hosp.id} disabled={hosp.available_beds === 0 && hosp.id !== selectedRequest.assigned_hospital_id}>
                             {hosp.name} (Beds: {hosp.available_beds})
                           </option>
                         ))}
@@ -694,36 +776,114 @@ export default function Dispatcher({
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleAssign}
-                    className="btn btn-danger"
-                    style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold' }}
-                    disabled={!manualAmbulanceId}
-                  >
-                    🚀 Confirm Dispatch
-                  </button>
+                  {isEditingAssignment ? (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => setIsEditingAssignment(false)}
+                        className="btn btn-secondary"
+                        style={{ flex: 1, padding: '0.5rem', fontSize: '0.85rem' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          await handleAssign();
+                          setIsEditingAssignment(false);
+                        }}
+                        className="btn btn-danger"
+                        style={{ flex: 2, padding: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                        disabled={!manualAmbulanceId}
+                      >
+                        🔄 Update Assignment
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleAssign}
+                      className="btn btn-danger"
+                      style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem', fontWeight: 'bold' }}
+                      disabled={!manualAmbulanceId}
+                    >
+                      🚀 Confirm Dispatch
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                   
                   {/* Allocation Summary Card */}
-                  <div style={{ background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', gap: '1rem', fontSize: '0.8rem' }}>
+                  <div style={{ background: '#f8fafc', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', fontSize: '0.8rem' }}>
                     <div>
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>AMBULANCE ASSIGNED</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>
-                        {ambulances.find(a => a.id === selectedRequest.assigned_ambulance_id)?.vehicle_number || 'N/A'} 
-                        <span style={{ fontSize: '0.7rem', fontWeight: 'normal', color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                          ({ambulances.find(a => a.id === selectedRequest.assigned_ambulance_id)?.status || 'N/A'})
-                        </span>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>AMBULANCE</span>
+                      <strong style={{ color: 'var(--text-primary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ambulances.find(a => a.id === selectedRequest.assigned_ambulance_id)?.vehicle_number || 'N/A'}
                       </strong>
                     </div>
-                    <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '1rem' }}>
-                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>DESTINATION HOSPITAL</span>
-                      <strong style={{ color: 'var(--text-primary)' }}>
-                        {hospitals.find(h => h.id === selectedRequest.assigned_hospital_id)?.name || 'None Assigned'}
+                    <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '0.5rem' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>DRIVER</span>
+                      <strong style={{ color: 'var(--text-primary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {drivers.find(d => d.id === selectedRequest.assigned_driver_id)?.name || 'N/A'}
+                      </strong>
+                    </div>
+                    <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '0.5rem' }}>
+                      <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block' }}>HOSPITAL</span>
+                      <strong style={{ color: 'var(--text-primary)', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {hospitals.find(h => h.id === selectedRequest.assigned_hospital_id)?.name || 'None'}
                       </strong>
                     </div>
                   </div>
+
+                  {/* Reassignment Trigger */}
+                  <button
+                    onClick={() => {
+                      setManualAmbulanceId(selectedRequest.assigned_ambulance_id || '');
+                      setSelectedDriverId(selectedRequest.assigned_driver_id || '');
+                      setSelectedHospitalId(selectedRequest.assigned_hospital_id || '');
+                      setIsEditingAssignment(true);
+                    }}
+                    className="btn btn-secondary"
+                    style={{ padding: '0.4rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', marginTop: '-0.2rem' }}
+                  >
+                    ✏️ Edit Assignment (Driver / Ambulance Swap)
+                  </button>
+
+                  {/* Citizen Verification & Resolve Console */}
+                  {selectedRequest.status === 'Completed - Awaiting Verification' && (
+                    <div style={{ 
+                      background: 'rgba(239, 68, 68, 0.02)', 
+                      border: '1px dashed var(--primary-red)', 
+                      borderRadius: '8px', 
+                      padding: '0.75rem', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      gap: '0.5rem',
+                      marginTop: '0.25rem' 
+                    }}>
+                      <div style={{ fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 'bold', color: 'var(--text-secondary)' }}>Citizen Agreement Status:</span>
+                        {selectedRequest.citizen_agreement === 'Agreed' ? (
+                          <span style={{ color: 'var(--primary-green)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            ✅ Agreed
+                          </span>
+                        ) : selectedRequest.citizen_agreement === 'Disputed' ? (
+                          <span style={{ color: 'var(--primary-red)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            ⚠️ DISPUTED / Disagreed
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--primary-orange)', fontWeight: 'bold' }}>
+                            ⏳ Awaiting Response
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={handleResolveAndComplete}
+                        className="btn btn-danger"
+                        style={{ width: '100%', padding: '0.5rem', fontSize: '0.82rem', fontWeight: 'bold', borderRadius: '6px' }}
+                      >
+                        ✓ Resolve & Complete Case
+                      </button>
+                    </div>
+                  )}
 
                   {/* voice note player */}
                   {selectedRequest.voice_recordings && selectedRequest.voice_recordings.length > 0 && (

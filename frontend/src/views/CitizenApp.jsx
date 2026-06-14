@@ -124,14 +124,6 @@ const translations = {
   }
 };;
 
-// Realistic Gwadar coordinates for presets
-const PRESET_COORDS = [
-  { name: "🚢 Gwadar Port", lat: 25.1150, lng: 62.3350, nameEn: "Gwadar Port Road", nameUr: "گوادر پورٹ روڈ" },
-  { name: "🏢 New Town", lat: 25.1320, lng: 62.3220, nameEn: "New Town Area", nameUr: "نیو ٹاؤن ایریا" },
-  { name: "✈️ Airport Rd", lat: 25.1380, lng: 62.3020, nameEn: "Airport Road Terminal", nameUr: "ایئرپورٹ روڈ ٹرمینل" },
-  { name: "🎣 Fish Harbour", lat: 25.1180, lng: 62.3150, nameEn: "Gwadar Fish Harbour", nameUr: "گوادر فش ہاربر" },
-  { name: "🏥 GDA Hospital", lat: 25.1380, lng: 62.3210, nameEn: "GDA Hospital Junction", nameUr: "جی ڈی اے ہسپتال جنکشن" }
-];
 
 export default function CitizenApp({ token, currentUser, hospitals, ambulances, requests, onNewRequestCreated }) {
   const [lang, setLang] = useState('en');
@@ -158,6 +150,8 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
 
   // GPS detection mock simulation
   const [isDetectingGps, setIsDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('checking'); // 'checking' | 'detected' | 'denied' | 'error'
+  const [gpsCoords, setGpsCoords] = useState(null);
 
   // Booking Form State
   const [name, setName] = useState(currentUser?.name || '');
@@ -173,8 +167,78 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   const [assignedAmbulance, setAssignedAmbulance] = useState(null);
   const [socket, setSocket] = useState(null);
 
+  // Ref to always have the latest activeRequest state inside callbacks
+  const activeRequestRef = useRef(activeRequest);
+  useEffect(() => {
+    activeRequestRef.current = activeRequest;
+  }, [activeRequest]);
+
   // Simulated Chat Messages State
   const [chatMessages, setChatMessages] = useState([]);
+
+  const detectGps = () => {
+    setGpsStatus('checking');
+    if (!navigator.geolocation) {
+      setGpsStatus('error');
+      setError('Geolocation is not supported by your browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        setGpsCoords(coords);
+        setUserPin(coords);
+        setGpsStatus('detected');
+        setLocationName(lang === 'en' ? "Live GPS Location" : "لائیو جی پی ایس لوکیشن");
+      },
+      (err) => {
+        console.error("GPS detection error:", err);
+        setGpsStatus('denied');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
+  useEffect(() => {
+    detectGps();
+  }, []);
+
+  // Continuous patient GPS watch when dispatch is active
+  useEffect(() => {
+    if (!activeRequest || !['Assigned', 'En Route', 'Reached Patient'].includes(activeRequest.status)) {
+      return;
+    }
+
+    console.log("Starting continuous GPS watch for active dispatch...");
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        console.log("Citizen moved. Streaming coordinates:", latitude, longitude);
+        fetch(`${BACKEND_URL}/api/requests/${activeRequest.id}/location`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ latitude, longitude })
+        })
+        .then(res => {
+          if (!res.ok) console.error("Failed to stream GPS coordinates");
+        })
+        .catch(err => console.error("GPS streaming error:", err));
+      },
+      (err) => console.error("watchPosition error:", err),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+
+    return () => {
+      console.log("Stopping continuous GPS watch...");
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [activeRequest?.id, activeRequest?.status, token]);
 
   const authHeaders = { 'Authorization': `Bearer ${token}` };
 
@@ -246,7 +310,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     newSocket.on('tracking:updated', (data) => {
       console.log('Real-time tracking update received:', data);
       if (data.request) {
-        const oldStatus = activeRequest?.status;
+        const oldStatus = activeRequestRef.current?.status;
         setActiveRequest(data.request);
         
         // Dynamic chat responses based on status transitions
@@ -265,6 +329,28 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
       }
       if (data.ambulance) {
         setAssignedAmbulance(data.ambulance);
+      }
+    });
+
+    newSocket.on('request:updated', (updatedReq) => {
+      console.log('Real-time request update received globally:', updatedReq);
+      if (activeRequestRef.current && updatedReq.id === activeRequestRef.current.id) {
+        const oldStatus = activeRequestRef.current?.status;
+        setActiveRequest(updatedReq);
+
+        // Dynamic chat responses based on status transitions
+        if (updatedReq.status === 'Assigned' && oldStatus === 'Pending') {
+          addDispatcherMessage(lang === 'en' ? "Ambulance assigned (Unit: GWD-7861)." : "ایمبولینس تفویض ہو گئی (یونٹ: GWD-7861)۔");
+        } else if (updatedReq.status === 'En Route' && oldStatus === 'Assigned') {
+          addDispatcherMessage(lang === 'en' ? "Ambulance is en route. Track live location on map." : "ایمبولینس روانہ ہو چکی ہے۔ نقشے پر لائیو ٹریک کریں۔");
+        } else if (updatedReq.status === 'Reached Patient' && oldStatus === 'En Route') {
+          addDispatcherMessage(lang === 'en' ? "Paramedics have reached your location." : "طبی عملہ آپ کی لوکیشن پر پہنچ چکا ہے۔");
+        }
+
+        if (updatedReq.status === 'Completed') {
+          sessionStorage.removeItem('active_emergency_request_id');
+          setAssignedAmbulance(null);
+        }
       }
     });
 
@@ -335,23 +421,11 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     }
   };
 
-  // Mock GPS detector
+  // Real GPS detector
   const handleGpsDetect = () => {
-    setIsDetectingGps(true);
-    setTimeout(() => {
-      setIsDetectingGps(false);
-      // Realistic coordinate in center of Gwadar
-      const mockGps = { latitude: 25.1220 + (Math.random() - 0.5) * 0.01, longitude: 62.3250 + (Math.random() - 0.5) * 0.01 };
-      setUserPin(mockGps);
-      setLocationName(lang === 'en' ? "Live GPS Location" : "لائیو جی پی ایس لوکیشن");
-    }, 1200);
+    detectGps();
   };
 
-  // Landmark Preset click
-  const handlePresetSelect = (preset) => {
-    setUserPin({ latitude: preset.lat, longitude: preset.lng });
-    setLocationName(lang === 'en' ? preset.nameEn : preset.nameUr);
-  };
 
   // Real voice recording handlers using browser APIs
   const startRecording = async () => {
@@ -437,6 +511,26 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     setChatInput('');
   };
 
+  const handleCitizenVerify = async (agreement) => {
+    if (!activeRequest) return;
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/requests/${activeRequest.id}/citizen-verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ agreement })
+      });
+      if (response.ok) {
+        const updatedReq = await response.json();
+        setActiveRequest(updatedReq);
+      }
+    } catch (err) {
+      console.error("Verification submit failed:", err);
+    }
+  };
+
   const handleReset = () => {
     setActiveRequest(null);
     setAssignedAmbulance(null);
@@ -455,7 +549,8 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
       case 'En Route': return 3;
       case 'Reached Patient': return 4;
       case 'At Hospital': return 5;
-      case 'Completed': return 6;
+      case 'Completed - Awaiting Verification': return 6;
+      case 'Completed': return 7;
       default: return 0;
     }
   };
@@ -500,7 +595,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     <div className="view-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       
       {/* Thin Header Bar */}
-      <header className="glass-panel" style={{ 
+      <header className="glass-panel citizen-header" style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
@@ -621,7 +716,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>{t.phone}</label>
                     <input 
-                      type="tel" 
+                      type="text" 
                       className="form-input" 
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }} 
                       placeholder={t.placeholderPhone} 
@@ -636,9 +731,9 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                   <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>{t.emergencyType}</label>
                   <select 
                     className="form-input" 
-                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }} 
                     value={emergencyType} 
-                    onChange={e => setEmergencyType(e.target.value)}
+                    onChange={e => setEmergencyType(e.target.value)} 
+                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
                   >
                     <option value="Accident">{t.accident}</option>
                     <option value="Cardiac Arrest">{t.cardiac}</option>
@@ -661,53 +756,53 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                   />
                 </div>
 
-                {/* GPS and Presets Inline section */}
+                {/* GPS and Location Status Banner */}
                 <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-                  <button
-                    type="button"
-                    onClick={handleGpsDetect}
-                    className="btn"
-                    disabled={isDetectingGps}
-                    style={{ 
-                      width: '100%', 
-                      padding: '0.4rem 0.8rem', 
-                      fontSize: '0.8rem', 
-                      background: 'rgba(2, 132, 199, 0.08)',
-                      color: 'var(--primary-blue)', 
-                      border: '1px solid rgba(2, 132, 199, 0.2)',
-                      display: 'flex', 
-                      gap: '0.35rem', 
-                      justifyContent: 'center', 
-                      alignItems: 'center',
-                      borderRadius: '6px',
-                      fontWeight: 'bold',
-                      marginBottom: '0.5rem'
-                    }}
-                  >
-                    <Compass size={14} className={isDetectingGps ? "pulse-icon" : ""} />
-                    {isDetectingGps ? t.gpsDetecting : t.detectGps}
-                  </button>
+                  {gpsStatus === 'checking' && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: 'var(--primary-blue)', fontSize: '0.8rem', padding: '0.4rem', fontWeight: 600 }}>
+                      <div className="pulse-icon">📡</div>
+                      <span>Verifying GPS Coordinates...</span>
+                    </div>
+                  )}
 
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', justifyContent: 'center' }}>
-                    {PRESET_COORDS.map(preset => (
+                  {gpsStatus === 'detected' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'center', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid rgba(22, 163, 74, 0.15)', borderRadius: '6px', padding: '0.5rem', color: 'var(--primary-green)', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span>🛰️</span> GPS Location Verified & Secured
+                      </div>
+                      <span style={{ fontSize: '0.7rem', opacity: 0.85, fontFamily: 'monospace' }}>
+                        ({userPin.latitude.toFixed(6)}, {userPin.longitude.toFixed(6)})
+                      </span>
+                    </div>
+                  )}
+
+                  {(gpsStatus === 'denied' || gpsStatus === 'error') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '0.5rem', borderRadius: '6px', color: 'var(--primary-red)', fontSize: '0.75rem', fontWeight: 'bold', lineHeight: '1.4' }}>
+                        <span>⚠️</span> GPS Location Required. Please enable GPS and allow location access in your browser to request an ambulance.
+                      </div>
                       <button
-                        key={preset.name}
                         type="button"
-                        onClick={() => handlePresetSelect(preset)}
-                        className="btn btn-secondary"
+                        onClick={handleGpsDetect}
+                        className="btn btn-primary"
                         style={{ 
-                          padding: '0.25rem 0.5rem', 
-                          fontSize: '0.7rem', 
-                          borderRadius: '12px',
-                          background: 'white',
-                          border: '1px solid rgba(0,0,0,0.08)',
-                          color: 'var(--text-secondary)'
+                          width: '100%', 
+                          padding: '0.4rem 0.8rem', 
+                          fontSize: '0.8rem', 
+                          borderRadius: '6px',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '0.25rem'
                         }}
                       >
-                        {preset.name}
+                        <span>🔄</span> Retry GPS Detection
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                  )}
+
+
                 </div>
 
                 <button 
@@ -722,7 +817,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                     marginTop: '0.25rem',
                     boxShadow: '0 4px 10px rgba(239, 68, 68, 0.2)' 
                   }} 
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || gpsStatus !== 'detected'}
                 >
                   {isSubmitting ? 'Sending Alert...' : t.reqNow}
                 </button>
@@ -918,6 +1013,60 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                 <span className="badge badge-red pulse-red-glow" style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem' }}>{activeRequest.status}</span>
               </div>
 
+              {activeRequest.status === 'Completed - Awaiting Verification' && (
+                <div style={{ 
+                  background: 'rgba(59, 130, 246, 0.05)', 
+                  border: '1px solid rgba(59, 130, 246, 0.15)', 
+                  borderRadius: '8px', 
+                  padding: '0.85rem', 
+                  marginBottom: '0.85rem',
+                  fontSize: '0.82rem',
+                  lineHeight: '1.4'
+                }}>
+                  <p style={{ fontWeight: 'bold', margin: '0 0 0.5rem 0', color: 'var(--primary-blue)' }}>
+                    {lang === 'en' ? "Verify Delivery Completion" : "ڈلیوری کی تصدیق کریں"}
+                  </p>
+                  <p style={{ margin: '0 0 0.75rem 0', color: 'var(--text-secondary)' }}>
+                    {lang === 'en' 
+                      ? "The driver has claimed you were delivered safely to the hospital. Do you agree that the trip is complete?" 
+                      : "ڈرائیور نے دعویٰ کیا ہے کہ آپ کو ہسپتال پہنچا دیا گیا ہے۔ کیا آپ اس بات سے متفق ہیں کہ سفر مکمل ہو گیا ہے؟"}
+                  </p>
+
+                  {activeRequest.citizen_agreement === undefined || activeRequest.citizen_agreement === null ? (
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => handleCitizenVerify('Agreed')}
+                        className="btn btn-success"
+                        style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem', fontWeight: 'bold', borderRadius: '6px' }}
+                      >
+                        👍 {lang === 'en' ? "Agree" : "متفق ہوں"}
+                      </button>
+                      <button
+                        onClick={() => handleCitizenVerify('Disputed')}
+                        className="btn btn-danger"
+                        style={{ flex: 1, padding: '0.45rem', fontSize: '0.78rem', fontWeight: 'bold', borderRadius: '6px' }}
+                      >
+                        👎 {lang === 'en' ? "Disagree" : "غیر متفق"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ 
+                      fontWeight: 'bold', 
+                      color: activeRequest.citizen_agreement === 'Agreed' ? 'var(--primary-green)' : 'var(--primary-red)',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem'
+                    }}>
+                      <span>{activeRequest.citizen_agreement === 'Agreed' ? '✅' : '⚠️'}</span>
+                      {activeRequest.citizen_agreement === 'Agreed' 
+                        ? (lang === 'en' ? "You verified completion. Awaiting dispatcher archive." : "آپ نے سفر مکمل ہونے کی تصدیق کی ہے۔")
+                        : (lang === 'en' ? "Disagreement registered. Dispatcher will review and resolve." : "اختلاف رجسٹرڈ ہو گیا۔ ڈسپیچر جائزہ لے گا۔")}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ETA & Distance */}
               {assignedAmbulance && (activeRequest.status === 'Assigned' || activeRequest.status === 'En Route') && (
                 <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.1)', borderRadius: '8px', padding: '0.75rem', marginBottom: '0.75rem' }}>
@@ -941,12 +1090,13 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                   { key: 2, label: t.nearestAssigned },
                   { key: 3, label: t.enRoute },
                   { key: 4, label: t.arrived },
-                  { key: 5, label: t.transporting }
+                  { key: 5, label: t.transporting },
+                  { key: 6, label: lang === 'en' ? 'Transport Completed' : 'نقل و حمل مکمل' }
                 ].map(step => (
                   <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div style={{
                       width: '18px', height: '18px', borderRadius: '50%',
-                      backgroundColor: currentStep >= step.key ? 'var(--primary-green)' : 'rgba(0,0,0,0.06)',
+                      backgroundColor: currentStep >= step.key ? (step.key === 6 ? '#22c55e' : 'var(--primary-green)') : 'rgba(0,0,0,0.06)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '9px', fontWeight: 'bold', color: currentStep >= step.key ? 'white' : 'var(--text-secondary)'
                     }}>
@@ -955,9 +1105,12 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                     <span style={{ 
                       fontSize: '0.8rem', 
                       fontWeight: currentStep === step.key ? 'bold' : 'normal', 
-                      color: currentStep >= step.key ? 'var(--text-primary)' : 'var(--text-muted)' 
+                      color: currentStep >= step.key ? (step.key === 6 ? '#15803d' : 'var(--text-primary)') : 'var(--text-muted)' 
                     }}>
                       {step.label}
+                      {currentStep === step.key && step.key < 6 && (
+                        <span style={{ marginLeft: '0.35rem', fontSize: '0.6rem', background: 'var(--primary-red)', color: 'white', padding: '0.1rem 0.3rem', borderRadius: '4px', fontWeight: 700 }}>LIVE</span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -966,17 +1119,34 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
               {/* Responder Info */}
               {assignedAmbulance ? (
                 <div style={{ padding: '0.75rem', borderRadius: '8px', borderLeft: '3px solid var(--primary-green)', backgroundColor: '#f8fafc', marginTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <p style={{ fontSize: '0.85rem', fontWeight: 'bold', margin: 0 }}>Driver: {assignedAmbulance.driver_name}</p>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    {assignedAmbulance.photo ? (
+                      <img 
+                        src={assignedAmbulance.photo} 
+                        alt="Ambulance" 
+                        style={{ width: '80px', height: '60px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-color)', flexShrink: 0 }}
+                      />
+                    ) : (
+                      <div style={{ width: '80px', height: '60px', borderRadius: '6px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', flexShrink: 0 }}>
+                        🚑
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 'bold', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Driver: {assignedAmbulance.driver_name}
+                      </p>
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.1rem 0 0.25rem 0' }}>
                         Vehicle: <b>{assignedAmbulance.vehicle_number}</b>
                       </p>
+                      {assignedAmbulance.model && (
+                        <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0 0 0.25rem 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Model: <b>{assignedAmbulance.model}</b>
+                        </p>
+                      )}
                       <a href={`tel:${assignedAmbulance.driver_phone}`} className="btn btn-secondary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.1)' }}>
                         📞 Call Driver
                       </a>
                     </div>
-                    <span style={{ fontSize: '1.5rem' }}>🚑</span>
                   </div>
                 </div>
               ) : (

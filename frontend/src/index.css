@@ -630,3 +630,89 @@ body {
   pointer-events: none;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   MOBILE RESPONSIVENESS OVERRIDES
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* App Main Staff Header */
+@media (max-width: 768px) {
+  .app-header {
+    height: auto !important;
+    flex-direction: column !important;
+    padding: 1rem !important;
+    gap: 0.75rem !important;
+    align-items: center !important;
+  }
+  .app-header > div {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+    align-items: center !important;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
+/* Citizen Portal Header */
+@media (max-width: 768px) {
+  .citizen-header {
+    flex-direction: column !important;
+    gap: 1rem !important;
+    align-items: center !important;
+    padding: 1rem !important;
+    text-align: center !important;
+    height: auto !important;
+  }
+  .citizen-header > div {
+    justify-content: center !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+  }
+}
+
+/* Dispatcher Dashboard Grid Overrides */
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    gap: 1.5rem !important;
+  }
+  .dashboard-sidebar {
+    height: 480px !important;
+  }
+  .dashboard-map-container {
+    height: 480px !important;
+  }
+  .dashboard-panel {
+    height: auto !important;
+    max-height: 550px !important;
+  }
+}
+
+/* Driver App Grid Overrides */
+@media (max-width: 992px) {
+  .driver-dashboard-grid {
+    grid-template-columns: 1fr !important;
+    min-height: auto !important;
+    gap: 1.5rem !important;
+  }
+  .driver-dashboard-grid > .dashboard-sidebar {
+    height: auto !important;
+  }
+  .driver-dashboard-grid .dark-map {
+    height: 400px !important;
+  }
+}
+
+/* Global mobile adjustments */
+@media (max-width: 600px) {
+  .view-container {
+    padding: 0.5rem !important;
+  }
+  .form-group {
+    margin-bottom: 0.75rem !important;
+  }
+}
+
+

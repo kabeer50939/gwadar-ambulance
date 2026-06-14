@@ -4,6 +4,7 @@ import CitizenApp from './views/CitizenApp';
 import Dispatcher from './views/Dispatcher';
 import DriverApp from './views/DriverApp';
 import ChairmanDashboard from './views/ChairmanDashboard';
+import InstallPrompt from './components/InstallPrompt';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
@@ -16,7 +17,11 @@ export default function App() {
   const [token, setToken] = useState(() => sessionStorage.getItem('gasg_token') || null);
 
   // Routing State
-  const [currentHash, setCurrentHash] = useState(() => window.location.hash || '#/login');
+  const [currentHash, setCurrentHash] = useState(() => window.location.hash || '#/citizen');
+
+  // Citizen Autologin/Loading State
+  const [citizenLoading, setCitizenLoading] = useState(false);
+  const [citizenError, setCitizenError] = useState(null);
 
   // App Data States
   const [hospitals, setHospitals] = useState([]);
@@ -33,39 +38,7 @@ export default function App() {
 
   const triggerFetch = () => setFetchTrigger(prev => prev + 1);
 
-  // 1. Router Guards
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash || '#/login';
-      if (!token) {
-        if (hash !== '#/login') {
-          window.location.hash = '#/login';
-          setCurrentHash('#/login');
-        } else {
-          setCurrentHash('#/login');
-        }
-      } else {
-        const role = currentUser?.role;
-        const validRoutes = {
-          citizen: '#/citizen',
-          driver: '#/driver',
-          dispatcher: '#/dispatcher',
-          chairman: '#/chairman'
-        };
-        const allowed = validRoutes[role];
-        if (allowed && hash !== allowed) {
-          window.location.hash = allowed;
-          setCurrentHash(allowed);
-        } else {
-          setCurrentHash(hash);
-        }
-      }
-    };
 
-    window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [token, currentUser]);
 
   // 2. Fetch data
   useEffect(() => {
@@ -123,14 +96,16 @@ export default function App() {
 
   // 4. Citizen Instant Access (no credentials)
   const handleCitizenAccess = async () => {
-    setLoginLoading(true);
-    setLoginError(null);
+    if (citizenLoading || token) return;
+    setCitizenLoading(true);
+    setCitizenError(null);
     try {
       const response = await fetch(`${BACKEND_URL}/api/citizen/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
+      if (!response.ok) throw new Error('Failed to create session');
       const data = await response.json();
       sessionStorage.setItem('gasg_token', data.token);
       sessionStorage.setItem('gasg_user', JSON.stringify(data.user));
@@ -138,38 +113,13 @@ export default function App() {
       setCurrentUser(data.user);
       window.location.hash = '#/citizen';
     } catch {
-      setLoginError('Could not connect to server. Please ensure the backend is running.');
+      setCitizenError('Could not connect to Gwadar Ambulance network. Please check your network or verify the backend is running.');
     } finally {
-      setLoginLoading(false);
+      setCitizenLoading(false);
     }
   };
 
-  // 5. Quick Demo Login
-  const handleQuickLogin = async (username, password) => {
-    setLoginUsername(username);
-    setLoginPassword(password);
-    setLoginLoading(true);
-    setLoginError(null);
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      if (!response.ok) throw new Error('Demo login failed');
-      const data = await response.json();
-      sessionStorage.setItem('gasg_token', data.token);
-      sessionStorage.setItem('gasg_user', JSON.stringify(data.user));
-      setToken(data.token);
-      setCurrentUser(data.user);
-      const routes = { driver: '#/driver', dispatcher: '#/dispatcher', chairman: '#/chairman' };
-      window.location.hash = routes[data.user.role] || '#/login';
-    } catch (err) {
-      setLoginError(err.message);
-    } finally {
-      setLoginLoading(false);
-    }
-  };
+
 
   // 6. Logout
   const handleLogout = () => {
@@ -186,41 +136,105 @@ export default function App() {
     window.location.hash = '#/login';
   };
 
+  // 1. Router Guards (handles hash change and logins/redirection)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash || '#/citizen';
+      
+      if (!token) {
+        if (hash === '#/citizen' || hash === '#/' || hash === '#') {
+          setCurrentHash('#/citizen');
+          handleCitizenAccess();
+        } else if (hash === '#/login') {
+          setCurrentHash('#/login');
+        } else {
+          window.location.hash = '#/login';
+          setCurrentHash('#/login');
+        }
+      } else {
+        const role = currentUser?.role;
+        const validRoutes = {
+          citizen: '#/citizen',
+          driver: '#/driver',
+          dispatcher: '#/dispatcher',
+          chairman: '#/chairman'
+        };
+        const allowed = validRoutes[role];
+        
+        // If logged in as citizen and trying to go to login, auto-logout citizen so they can log in as staff
+        if (role === 'citizen' && hash === '#/login') {
+          handleLogout();
+          return;
+        }
+
+        // If staff is logged in and trying to access citizen/login, redirect to staff dashboard
+        if (role !== 'citizen' && (hash === '#/citizen' || hash === '#/login' || hash === '#/' || hash === '#')) {
+          window.location.hash = allowed;
+          setCurrentHash(allowed);
+          return;
+        }
+
+        if (allowed && hash !== allowed) {
+          window.location.hash = allowed;
+          setCurrentHash(allowed);
+        } else {
+          setCurrentHash(hash);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [token, currentUser]);
+
   // ─── Authenticated App Shell ──────────────────────────────────────────────
   if (token && currentUser) {
+    const isCitizen = currentUser.role === 'citizen';
     return (
       <div>
-        <header className="app-header glass-panel">
-          <div className="app-logo">
-            <ShieldAlert className="app-logo-icon" size={24} />
-            <span>GWADAR AMBULANCE</span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: '0.8rem' }}>
-              <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
-                {currentUser.username ? `@${currentUser.username}` : currentUser.name}
-              </span>
-              <span className={`badge ${
-                currentUser.role === 'dispatcher' ? 'badge-red' :
-                currentUser.role === 'driver' ? 'badge-orange' :
-                currentUser.role === 'chairman' ? 'badge-green' : 'badge-blue'
-              }`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem', marginTop: '0.1rem' }}>
-                {currentUser.role === 'citizen' ? '👤 CITIZEN' :
-                 currentUser.role === 'driver' ? '🚑 DRIVER' :
-                 currentUser.role === 'dispatcher' ? '📡 DISPATCHER' : '👑 CHAIRMAN'}
-              </span>
+        {!isCitizen && (
+          <header className="app-header glass-panel">
+            <div className="app-logo">
+              <ShieldAlert className="app-logo-icon" size={24} />
+              <span>GWADAR AMBULANCE</span>
             </div>
 
-            <button
-              onClick={handleLogout}
-              className="btn btn-secondary"
-              style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}
-            >
-              <LogOut size={14} /> Logout
-            </button>
-          </div>
-        </header>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: '0.8rem' }}>
+                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                  {currentUser.username ? `@${currentUser.username}` : currentUser.name}
+                </span>
+                <span className={`badge ${
+                  currentUser.role === 'dispatcher' ? 'badge-red' :
+                  currentUser.role === 'driver' ? 'badge-orange' :
+                  currentUser.role === 'chairman' ? 'badge-green' : 'badge-blue'
+                }`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem', marginTop: '0.1rem' }}>
+                  {currentUser.role === 'citizen' ? '👤 CITIZEN' :
+                   currentUser.role === 'driver' ? '🚑 DRIVER' :
+                   currentUser.role === 'dispatcher' ? '📡 DISPATCHER' : '👑 CHAIRMAN'}
+                </span>
+              </div>
+
+              <a 
+                href="#/citizen" 
+                target="gasg_citizen_portal"
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center', textDecoration: 'none' }}
+              >
+                🚑 Citizen Portal
+              </a>
+
+              <button
+                onClick={handleLogout}
+                className="btn btn-secondary"
+                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}
+              >
+                <LogOut size={14} /> Logout
+              </button>
+            </div>
+          </header>
+        )}
 
         <main>
           {currentHash === '#/citizen' && currentUser.role === 'citizen' && (
@@ -270,6 +284,118 @@ export default function App() {
             />
           )}
         </main>
+        <InstallPrompt />
+      </div>
+    );
+  }
+
+  // If no token and route is citizen/root, render beautiful loading / error screen
+  if (!token && (currentHash === '#/citizen' || currentHash === '#/' || currentHash === '#')) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1.5rem',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute', top: '15%', left: '50%', transform: 'translateX(-50%)',
+          width: '600px', height: '300px',
+          background: 'radial-gradient(ellipse, rgba(239,68,68,0.12) 0%, transparent 70%)',
+          pointerEvents: 'none'
+        }} />
+
+        <div style={{ textAlign: 'center', position: 'relative', zIndex: 1, maxWidth: '420px', width: '100%' }}>
+          <div style={{
+            width: '64px', height: '64px',
+            background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+            borderRadius: '18px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'white', fontSize: '2rem', margin: '0 auto 1.5rem auto',
+            boxShadow: '0 8px 32px rgba(239,68,68,0.4)',
+            animation: 'pulse 2.5s infinite'
+          }}>✚</div>
+
+          <h1 style={{
+            fontWeight: 900, fontSize: '1.8rem',
+            color: 'white', textTransform: 'uppercase',
+            letterSpacing: '2px', marginBottom: '0.5rem'
+          }}>GWADAR AMBULANCE</h1>
+
+          {citizenError ? (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '20px',
+              padding: '2rem',
+              marginTop: '1rem',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.75rem' }}>⚠️</div>
+              <h2 style={{ color: '#fca5a5', fontWeight: 800, fontSize: '1.2rem', marginBottom: '0.75rem' }}>
+                Connection Error
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.82rem', lineHeight: '1.6', marginBottom: '1.5rem' }}>
+                {citizenError}
+              </p>
+              <button
+                onClick={handleCitizenAccess}
+                style={{
+                  width: '100%',
+                  padding: '0.85rem',
+                  background: 'linear-gradient(135deg, #dc2626, #ef4444)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 15px rgba(220,38,38,0.4)'
+                }}
+              >
+                🔄 Retry Connection
+              </button>
+            </div>
+          ) : (
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '20px',
+              padding: '2rem',
+              marginTop: '1rem',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+              backdropFilter: 'blur(10px)'
+            }}>
+              <h2 style={{ color: 'white', fontWeight: 800, fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                Connecting to SOS Network
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.82rem', marginBottom: '1.5rem' }}>
+                Initializing secure anonymous citizen session...
+              </p>
+              <div style={{
+                width: '32px', height: '32px',
+                border: '3px solid rgba(255,255,255,0.1)',
+                borderTop: '3px solid #ef4444',
+                borderRadius: '50%',
+                margin: '0 auto',
+                animation: 'spin 1s linear infinite'
+              }} />
+            </div>
+          )}
+
+          {/* Simple Link to Staff Portal */}
+          <div style={{ marginTop: '2rem' }}>
+            <a href="#/login" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600 }}>
+              🔒 Staff Secure Portal
+            </a>
+          </div>
+        </div>
+        <InstallPrompt />
       </div>
     );
   }
@@ -316,7 +442,7 @@ export default function App() {
         </p>
       </div>
 
-      {/* Main Card */}
+      {/* Main Card (Staff Login Only) */}
       <div style={{
         width: '100%', maxWidth: '480px',
         background: 'rgba(255,255,255,0.05)',
@@ -328,70 +454,14 @@ export default function App() {
         position: 'relative', zIndex: 1
       }}>
 
-        {/* ── CITIZEN EMERGENCY BLOCK ── */}
-        <div style={{
-          padding: '1.75rem 2rem',
-          background: 'linear-gradient(135deg, rgba(220,38,38,0.15), rgba(239,68,68,0.08))',
-          borderBottom: '1px solid rgba(239,68,68,0.2)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
-            <div style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              background: '#ef4444', animation: 'pulse 1.5s infinite',
-              boxShadow: '0 0 6px #ef4444'
-            }} />
-            <span style={{ color: '#fca5a5', fontSize: '0.7rem', fontWeight: 700, letterSpacing: '1.5px', textTransform: 'uppercase' }}>
-              Emergency Access
-            </span>
-          </div>
-
-          <h2 style={{ color: 'white', fontWeight: 800, fontSize: '1.15rem', marginBottom: '0.4rem' }}>
-            🚑 Are you in an emergency?
-          </h2>
-          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem', lineHeight: '1.5', marginBottom: '1.25rem' }}>
-            No login needed. Tap below for <strong style={{ color: 'white' }}>instant ambulance dispatch</strong>.
-            We auto-detect your location.
-          </p>
-
-          <button
-            id="citizen-emergency-btn"
-            onClick={handleCitizenAccess}
-            disabled={loginLoading}
-            style={{
-              width: '100%',
-              padding: '1rem',
-              background: loginLoading ? '#991b1b' : 'linear-gradient(135deg, #dc2626, #b91c1c)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '14px',
-              fontSize: '1.05rem',
-              fontWeight: 800,
-              cursor: loginLoading ? 'not-allowed' : 'pointer',
-              letterSpacing: '0.5px',
-              textTransform: 'uppercase',
-              boxShadow: '0 4px 20px rgba(220,38,38,0.5)',
-              transition: 'all 0.2s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem'
-            }}
-            onMouseEnter={e => { if (!loginLoading) e.target.style.transform = 'scale(1.02)'; }}
-            onMouseLeave={e => { e.target.style.transform = 'scale(1)'; }}
-          >
-            {loginLoading ? '⏳ Connecting...' : '🚨 Request Ambulance Now — Free & Instant'}
-          </button>
-
-          <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.7rem', textAlign: 'center', marginTop: '0.75rem' }}>
-            ⚡ Opens immediately · No account required · GPS auto-detected
-          </p>
-        </div>
-
         {/* ── STAFF LOGIN BLOCK ── */}
-        <div style={{ padding: '1.75rem 2rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+        <div style={{ padding: '2rem 2.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.5rem' }}>
             <div style={{
               width: '28px', height: '1px',
               background: 'rgba(255,255,255,0.15)'
             }} />
-            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
+            <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem', fontWeight: 600, letterSpacing: '1.5px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
               🔐 Staff Secure Login
             </span>
             <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.15)' }} />
@@ -409,7 +479,7 @@ export default function App() {
             </div>
           )}
 
-          <form onSubmit={handleStaffLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <form onSubmit={handleStaffLogin} style={{ display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
             {/* Username */}
             <div style={{ position: 'relative' }}>
               <User size={15} style={{
@@ -498,43 +568,27 @@ export default function App() {
             </button>
           </form>
 
-          {/* Quick Demo Shortcuts */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '1px', textAlign: 'center', marginBottom: '0.75rem' }}>
-              Quick Demo Access
-            </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              {[
-                { label: '👑 Chairman', sub: 'chairman', username: 'chairman', password: 'chairman123', color: '#16a34a' },
-                { label: '📡 Dispatcher', sub: 'saleem', username: 'saleem', password: 'dispatch123', color: '#2563eb' },
-                { label: '🚑 Driver', sub: 'kabeer', username: 'kabeer', password: 'driver123', color: '#d97706' },
-                { label: '🚑 Driver 2', sub: 'sajid', username: 'sajid', password: 'driver123', color: '#7c3aed' },
-              ].map(item => (
-                <button
-                  key={item.username}
-                  onClick={() => handleQuickLogin(item.username, item.password)}
-                  style={{
-                    padding: '0.55rem 0.5rem',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: `1px solid rgba(255,255,255,0.1)`,
-                    borderRadius: '10px',
-                    color: 'rgba(255,255,255,0.8)',
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    transition: 'all 0.15s',
-                    lineHeight: '1.4'
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.borderColor = item.color; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
-                >
-                  <div>{item.label}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>@{item.sub}</div>
-                </button>
-              ))}
-            </div>
+
+          {/* Separation: Link back to Citizen portal */}
+          <div style={{ textAlign: 'center', marginTop: '1.75rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.25rem' }}>
+            <a 
+              href="#/citizen" 
+              target="gasg_citizen_portal"
+              style={{
+                color: '#fca5a5',
+                fontSize: '0.82rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                cursor: 'pointer'
+              }}
+            >
+              🚑 Go to Public Citizen Portal
+            </a>
           </div>
+
         </div>
       </div>
 
@@ -542,6 +596,7 @@ export default function App() {
       <p style={{ marginTop: '1.5rem', color: 'rgba(255,255,255,0.25)', fontSize: '0.7rem', letterSpacing: '0.5px', position: 'relative', zIndex: 1 }}>
         GASG · Role-Based Access Control · Secure Dispatch Network
       </p>
+      <InstallPrompt />
     </div>
   );
 }

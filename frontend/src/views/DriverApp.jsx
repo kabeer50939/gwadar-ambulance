@@ -64,7 +64,10 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
   const sirenOscRef = useRef(null);
   const sirenIntervalRef = useRef(null);
 
-  const currentAmbulance = ambulances.find(a => a.id === selectedAmbulanceId);
+  const currentAmbulance = ambulances.find(a => 
+    a.id === selectedAmbulanceId || 
+    (a.vehicle_number && selectedAmbulanceId && a.vehicle_number.trim().toLowerCase() === selectedAmbulanceId.trim().toLowerCase())
+  );
 
   // Web Audio Synthesizer for Ambulance Siren Sound (soft 0.02 gain)
   const startSirenSynthesizer = () => {
@@ -159,25 +162,25 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     }
   };
 
-  // Bind vehicle selection and go online automatically based on logged-in driver profile
-  useEffect(() => {
-    if (currentUser?.ambulance_id) {
-      setSelectedAmbulanceId(currentUser.ambulance_id);
-      setIsOnline(true);
-    }
-  }, [currentUser]);
-
   // Synchronize active job if request list updates
   useEffect(() => {
-    if (selectedAmbulanceId && requests.length > 0) {
+    if (requests.length > 0) {
       const job = requests.find(
-        r => r.assigned_ambulance_id === selectedAmbulanceId && r.status !== 'Completed'
+        r => r.assigned_driver_id === currentUser.id && 
+        r.status !== 'Completed' && 
+        r.status !== 'Completed - Awaiting Verification'
       );
       setActiveJob(job || null);
+      if (job && job.assigned_ambulance_id) {
+        setSelectedAmbulanceId(job.assigned_ambulance_id);
+      } else {
+        setSelectedAmbulanceId('');
+      }
     } else {
       setActiveJob(null);
+      setSelectedAmbulanceId('');
     }
-  }, [requests, selectedAmbulanceId]);
+  }, [requests, currentUser.id]);
 
   // Auto-Telemetry generation loop
   useEffect(() => {
@@ -220,7 +223,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
   // WebSockets setup
   useEffect(() => {
-    if (!selectedAmbulanceId || !isOnline) {
+    if (!isOnline) {
       if (socket) {
         socket.disconnect();
         setSocket(null);
@@ -234,10 +237,11 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      console.log(`Driver socket connected for ambulance ${selectedAmbulanceId}:`, newSocket.id);
-      if (currentAmbulance) {
+      console.log(`Driver socket connected for driver ${currentUser.id}:`, newSocket.id);
+      if (selectedAmbulanceId && currentAmbulance) {
         newSocket.emit('driver:location-update', {
           ambulanceId: selectedAmbulanceId,
+          driverId: currentUser.id,
           latitude: currentAmbulance.latitude,
           longitude: currentAmbulance.longitude,
           bearing: currentAmbulance.bearing,
@@ -247,9 +251,45 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       }
     });
 
+    newSocket.on(`driver:assigned:${currentUser.id}`, (payload) => {
+      setActiveJob(payload.request);
+      if (payload.request.assigned_ambulance_id) {
+        setSelectedAmbulanceId(payload.request.assigned_ambulance_id);
+      }
+      triggerFetch();
+    });
+
     newSocket.on(`driver:assigned:${selectedAmbulanceId}`, (payload) => {
       setActiveJob(payload.request);
+      if (payload.request.assigned_ambulance_id) {
+        setSelectedAmbulanceId(payload.request.assigned_ambulance_id);
+      }
       triggerFetch();
+    });
+
+    newSocket.on('request:updated', (updatedReq) => {
+      setActiveJob(prevJob => {
+        if (prevJob && prevJob.id === updatedReq.id) {
+          const stillAssigned = updatedReq.assigned_driver_id === currentUser.id;
+          if (stillAssigned && updatedReq.status !== 'Completed' && updatedReq.status !== 'Completed - Awaiting Verification') {
+            if (updatedReq.assigned_ambulance_id) {
+              setSelectedAmbulanceId(updatedReq.assigned_ambulance_id);
+            }
+            return updatedReq;
+          } else {
+            return null;
+          }
+        } else {
+          const assignedToUs = updatedReq.assigned_driver_id === currentUser.id;
+          if (assignedToUs && updatedReq.status !== 'Completed' && updatedReq.status !== 'Completed - Awaiting Verification') {
+            if (updatedReq.assigned_ambulance_id) {
+              setSelectedAmbulanceId(updatedReq.assigned_ambulance_id);
+            }
+            return updatedReq;
+          }
+        }
+        return prevJob;
+      });
     });
 
     newSocket.on('system:reset', () => {
@@ -269,12 +309,12 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
   }, [selectedAmbulanceId, isOnline, currentAmbulance]);
 
   const handleToggleDuty = () => {
-    if (!selectedAmbulanceId) return;
-
     if (isOnline) {
-      if (socket && currentAmbulance) {
+      if (socket && selectedAmbulanceId && currentAmbulance) {
         socket.emit('driver:location-update', {
           ambulanceId: selectedAmbulanceId,
+          driverId: currentUser.id,
+          goOffline: true,
           latitude: currentAmbulance.latitude,
           longitude: currentAmbulance.longitude,
           status: 'Available',
@@ -283,6 +323,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       }
       setIsOnline(false);
       setActiveJob(null);
+      setSelectedAmbulanceId('');
       stopSirenSynthesizer();
       setSirenActive(false);
       setIsAutoTelemetry(false);
@@ -296,10 +337,11 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     if (socket && isOnline) {
       socket.emit('driver:location-update', {
         ambulanceId: selectedAmbulanceId,
+        driverId: currentUser.id,
         latitude: lat,
         longitude: lng,
         bearing: bearing,
-        status: status || currentAmbulance.status,
+        status: status || currentAmbulance?.status || 'Available',
         siren: sirenActive
       });
     }
@@ -408,35 +450,59 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     }, intervalMs);
   };
 
-  const handleStartEnRoute = () => {
+  // Status progression config — single button advances through each step
+  const STATUS_STEPS = [
+    {
+      from: 'Assigned',
+      to: 'En Route',
+      label: '🚀 Start Driving',
+      color: 'btn-primary',
+      description: 'Mark yourself as en route to the patient'
+    },
+    {
+      from: 'En Route',
+      to: 'Reached Patient',
+      label: '🏠 Paramedics Reached Patient',
+      color: 'btn-success',
+      description: 'Confirm you have arrived at the patient location'
+    },
+    {
+      from: 'Reached Patient',
+      to: 'At Hospital',
+      label: '🚑 Transporting to Hospital',
+      color: 'btn-primary',
+      description: 'Begin patient transport to the assigned hospital'
+    },
+    {
+      from: 'At Hospital',
+      to: 'Completed - Awaiting Verification',
+      label: '✅ Transport Complete',
+      color: 'btn-danger',
+      description: 'Finalize and claim delivery — awaits citizen & dispatcher confirmation'
+    }
+  ];
+
+  const handleProgressStatus = () => {
     if (!activeJob) return;
-    updateJobStatus('En Route');
-    startSimulation(activeJob.latitude, activeJob.longitude, 'Reached Patient', () => {
-      updateJobStatus('Reached Patient');
-    });
-  };
+    const step = STATUS_STEPS.find(s => s.from === activeJob.status);
+    if (!step) return;
 
-  const handleTransportToHospital = () => {
-    if (!activeJob || !activeJob.assigned_hospital_id) return;
-    const hospital = hospitals.find(h => h.id === activeJob.assigned_hospital_id);
-    if (!hospital) return;
+    updateJobStatus(step.to);
 
-    updateJobStatus('At Hospital');
-    startSimulation(hospital.latitude, hospital.longitude, 'At Hospital', () => {
-      // Finished
-    });
-  };
-
-  const handleCompleteCase = () => {
-    if (!activeJob) return;
-    updateJobStatus('Completed');
-    setActiveJob(null);
-    triggerFetch();
+    // Trigger GPS simulation in parallel when starting to drive
+    if (step.to === 'En Route') {
+      startSimulation(activeJob.latitude, activeJob.longitude, 'En Route', null);
+    } else if (step.to === 'At Hospital' && activeJob.assigned_hospital_id) {
+      const hospital = hospitals.find(h => h.id === activeJob.assigned_hospital_id);
+      if (hospital) startSimulation(hospital.latitude, hospital.longitude, 'At Hospital', null);
+    } else if (step.to === 'Completed - Awaiting Verification') {
+      triggerFetch();
+    }
   };
 
   return (
     <div className="view-container" style={{ padding: '1rem', maxWidth: '100%', margin: 0 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.25rem', minHeight: 'calc(100vh - 90px)' }}>
+      <div className="driver-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.25rem', minHeight: 'calc(100vh - 90px)' }}>
         
         {/* Left Column: Driver Control Panel */}
         <div className="dashboard-sidebar" style={{ gap: '1rem' }}>
@@ -459,66 +525,65 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
               )}
             </div>
 
-            {/* Vehicle locking info */}
-            {currentUser?.ambulance_id ? (
+            {/* Driver Profile Summary */}
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', background: '#f8fafc', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+              {currentUser?.photo ? (
+                <img src={currentUser.photo} alt={currentUser.name} style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+              ) : (
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>👤</div>
+              )}
+              <div>
+                <p style={{ fontWeight: 'bold', fontSize: '0.85rem', margin: 0 }}>{currentUser.name}</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.1rem 0 0 0' }}>CNIC: {currentUser.cnic || '—'}</p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>Phone: {currentUser.phone || '—'}</p>
+              </div>
+            </div>
+
+            {/* Dynamic vehicle assignment details during active dispatches */}
+            {activeJob && selectedAmbulanceId && (
               <div style={{ 
-                background: 'linear-gradient(135deg, rgba(2, 132, 199, 0.05) 0%, rgba(2, 132, 199, 0.02) 100%)', 
-                border: '1px solid rgba(2, 132, 199, 0.15)', 
+                background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.05) 0%, rgba(22, 163, 74, 0.02) 100%)', 
+                border: '1px solid rgba(22, 163, 74, 0.15)', 
                 padding: '0.75rem 1rem', 
                 borderRadius: '12px', 
                 fontSize: '0.85rem', 
-                color: '#0369a1',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
+                color: '#166534'
               }}>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>Vehicle: <span style={{ fontWeight: 800 }}>{currentAmbulance?.vehicle_number || 'AMB-01'}</span></p>
-                  <p style={{ fontSize: '0.75rem', opacity: 0.8, marginTop: '0.1rem' }}>Driver: <b>{currentUser.name}</b></p>
-                </div>
-                <div style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: 'rgba(2, 132, 199, 0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--primary-blue)'
-                }}>
-                  <User size={16} />
-                </div>
-              </div>
-            ) : (
-              <div className="form-group" style={{ marginBottom: 0 }}>
-                <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>Choose Vehicle</label>
-                <select
-                  className="form-input"
-                  value={selectedAmbulanceId}
-                  onChange={e => {
-                    setSelectedAmbulanceId(e.target.value);
-                    setIsOnline(false);
-                    setActiveJob(null);
-                  }}
-                  disabled={isOnline}
-                  style={{ padding: '0.5rem 0.75rem', fontSize: '0.85rem' }}
-                >
-                  <option value="">Choose vehicle...</option>
-                  {ambulances.map(amb => (
-                    <option key={amb.id} value={amb.id}>
-                      {amb.vehicle_number} - {amb.driver_name} ({amb.status})
-                    </option>
-                  ))}
-                </select>
+                <p style={{ fontWeight: 600, fontSize: '0.85rem', margin: 0 }}>
+                  Assigned Vehicle: <span style={{ fontWeight: 800 }}>{currentAmbulance?.vehicle_number || '—'}</span>
+                </p>
+                {currentAmbulance?.model && (
+                  <p style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '0.1rem', margin: 0 }}>
+                    Model: {currentAmbulance.model}
+                  </p>
+                )}
               </div>
             )}
 
             {/* Online/Offline and Siren Quick Toggles */}
-            {selectedAmbulanceId && (
-              <div style={{ display: 'grid', gridTemplateColumns: isOnline ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isOnline && selectedAmbulanceId ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
+              <button
+                onClick={handleToggleDuty}
+                className={`btn ${isOnline ? 'btn-danger' : 'btn-success'}`}
+                style={{ 
+                  padding: '0.6rem 1rem', 
+                  fontSize: '0.85rem', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  gap: '0.4rem',
+                  borderRadius: '10px',
+                  boxShadow: isOnline ? '0 4px 10px rgba(239, 68, 68, 0.15)' : '0 4px 10px rgba(22, 163, 74, 0.15)'
+                }}
+              >
+                <Power size={15} />
+                {isOnline ? 'End Duty' : 'Go Online'}
+              </button>
+
+              {isOnline && selectedAmbulanceId && (
                 <button
-                  onClick={handleToggleDuty}
-                  className={`btn ${isOnline ? 'btn-danger' : 'btn-success'}`}
+                  onClick={toggleSiren}
+                  className={`btn ${sirenActive ? 'pulse-red-glow' : 'btn-secondary'}`}
                   style={{ 
                     padding: '0.6rem 1rem', 
                     fontSize: '0.85rem', 
@@ -527,25 +592,6 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
                     justifyContent: 'center', 
                     gap: '0.4rem',
                     borderRadius: '10px',
-                    boxShadow: isOnline ? '0 4px 10px rgba(239, 68, 68, 0.15)' : '0 4px 10px rgba(22, 163, 74, 0.15)'
-                  }}
-                >
-                  <Power size={15} />
-                  {isOnline ? 'End Duty' : 'Go Online'}
-                </button>
-
-                {isOnline && (
-                  <button
-                    onClick={toggleSiren}
-                    className={`btn ${sirenActive ? 'pulse-red-glow' : 'btn-secondary'}`}
-                    style={{ 
-                      padding: '0.6rem 1rem', 
-                      fontSize: '0.85rem', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      gap: '0.4rem',
-                      borderRadius: '10px',
                       backgroundColor: sirenActive ? 'var(--primary-red)' : '#f8fafc',
                       color: sirenActive ? 'white' : 'var(--text-primary)',
                       border: sirenActive ? 'none' : '1px solid var(--border-color)',
@@ -558,8 +604,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
                   </button>
                 )}
               </div>
-            )}
-          </div>
+            </div>
 
           {/* Active Dispatch details */}
           {isOnline && activeJob ? (
@@ -589,76 +634,71 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
                 </div>
               </div>
 
-              {/* Progress workflow stepper & buttons */}
+              {/* Single Progressive Status Button */}
               <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
-                {activeJob.status === 'Assigned' && (
+
+                {/* Step progress indicator */}
+                {(() => {
+                  const stepIndex = STATUS_STEPS.findIndex(s => s.from === activeJob.status);
+                  const totalSteps = STATUS_STEPS.length;
+                  return stepIndex >= 0 ? (
+                    <div style={{ marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.3rem', fontWeight: 600 }}>
+                        <span>PROGRESS</span>
+                        <span>Step {stepIndex + 1} of {totalSteps}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '3px' }}>
+                        {STATUS_STEPS.map((_, i) => (
+                          <div key={i} style={{
+                            flex: 1, height: '4px', borderRadius: '4px',
+                            background: i <= stepIndex ? 'var(--primary-green)' : 'rgba(0,0,0,0.08)',
+                            transition: 'background 0.3s'
+                          }} />
+                        ))}
+                      </div>
+                      {STATUS_STEPS[stepIndex] && (
+                        <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.35rem 0 0 0', lineHeight: '1.3' }}>
+                          {STATUS_STEPS[stepIndex].description}
+                        </p>
+                      )}
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* The single action button — advances to next status */}
+                {STATUS_STEPS.find(s => s.from === activeJob.status) ? (
                   <button
-                    onClick={handleStartEnRoute}
+                    onClick={handleProgressStatus}
                     disabled={isSimulating}
-                    className="btn btn-primary"
-                    style={{ width: '100%', fontSize: '0.85rem', padding: '0.65rem', borderRadius: '8px', fontWeight: 700 }}
+                    className={`btn ${STATUS_STEPS.find(s => s.from === activeJob.status)?.color || 'btn-primary'}`}
+                    style={{ width: '100%', fontSize: '0.88rem', padding: '0.75rem', borderRadius: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', boxShadow: '0 4px 14px rgba(0,0,0,0.1)', transition: 'all 0.2s' }}
                   >
-                    <Navigation size={15} style={{ transform: 'rotate(45deg)' }} /> Start Driving
+                    {isSimulating ? (
+                      <><span className="pulse-icon">🛰️</span> GPS Tracking Active...</>
+                    ) : (
+                      STATUS_STEPS.find(s => s.from === activeJob.status)?.label
+                    )}
                   </button>
-                )}
-
-                {activeJob.status === 'En Route' && (
+                ) : activeJob.status === 'Completed - Awaiting Verification' ? (
                   <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    gap: '0.5rem', 
+                    padding: '0.75rem', 
+                    background: 'rgba(249, 115, 22, 0.05)', 
+                    border: '1px solid rgba(249, 115, 22, 0.15)', 
+                    borderRadius: '10px', 
                     color: 'var(--primary-orange)', 
-                    textAlign: 'center', 
-                    fontSize: '0.85rem', 
-                    padding: '0.6rem',
-                    background: 'rgba(249, 115, 22, 0.05)',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(249, 115, 22, 0.15)',
-                    fontWeight: 600
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    textAlign: 'center',
+                    lineHeight: '1.5'
                   }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--primary-orange)' }} className="pulse-icon"></div>
-                    En Route (Driving)...
+                    ⏳ Trip complete. Awaiting citizen &amp; dispatcher confirmation.
                   </div>
-                )}
+                ) : null}
 
-                {activeJob.status === 'Reached Patient' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', background: '#f1f5f9', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                      🏥 Hospital: <b>{hospitals.find(h => h.id === activeJob.assigned_hospital_id)?.name || 'None Assigned'}</b>
-                    </div>
-                    <button
-                      onClick={handleTransportToHospital}
-                      disabled={isSimulating}
-                      className="btn btn-success"
-                      style={{ width: '100%', fontSize: '0.85rem', padding: '0.65rem', borderRadius: '8px', fontWeight: 700 }}
-                    >
-                      🚑 Transport to Hospital
-                    </button>
-                  </div>
-                )}
-
-                {activeJob.status === 'At Hospital' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ 
-                      padding: '0.5rem 0.75rem', 
-                      background: 'rgba(22, 163, 74, 0.05)', 
-                      border: '1px solid rgba(22, 163, 74, 0.15)', 
-                      borderRadius: '8px', 
-                      color: 'var(--primary-green)', 
-                      fontSize: '0.8rem', 
-                      fontWeight: 600, 
-                      textAlign: 'center' 
-                    }}>
-                      🏥 Arrived at Hospital Intake
-                    </div>
-                    <button
-                      onClick={handleCompleteCase}
-                      className="btn btn-danger"
-                      style={{ width: '100%', fontSize: '0.85rem', padding: '0.65rem', borderRadius: '8px', fontWeight: 700 }}
-                    >
-                      ✓ Complete Case
-                    </button>
+                {/* Hospital info strip when relevant */}
+                {(activeJob.status === 'Reached Patient' || activeJob.status === 'At Hospital') && (
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)', background: '#f1f5f9', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+                    🏥 Hospital: <b>{hospitals.find(h => h.id === activeJob.assigned_hospital_id)?.name || 'None Assigned'}</b>
                   </div>
                 )}
               </div>
@@ -691,7 +731,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
             </div>
           ) : (
             <div className="glass-panel" style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.8rem', borderRadius: '16px', background: 'white' }}>
-              Select vehicle and click <b>Go Online</b> to start receiving dispatch jobs.
+              Click <b>Go Online</b> to start receiving dispatch jobs.
             </div>
           )}
 

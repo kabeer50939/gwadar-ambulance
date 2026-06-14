@@ -32,8 +32,124 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
   const [deletingId, setDeletingId] = useState(null);
   const [newStaff, setNewStaff] = useState({
     name: '', username: '', password: '', role: 'driver',
-    phone: '', ambulance_id: ''
+    phone: '', cnic: '', photo: ''
   });
+
+  // Fleet management state
+  const [showCreateFleetForm, setShowCreateFleetForm] = useState(false);
+  const [newAmbulance, setNewAmbulance] = useState({ vehicle_number: '', model: '', photo: '' });
+  const [fleetLoading, setFleetLoading] = useState(false);
+  const [fleetError, setFleetError] = useState(null);
+  const [fleetSuccess, setFleetSuccess] = useState(null);
+
+  // Helper for advanced client-side image compression and center-cropping
+  const processImageFile = (file, targetWidth, targetHeight, callback) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+
+        const sourceWidth = img.width;
+        const sourceHeight = img.height;
+        const targetRatio = targetWidth / targetHeight;
+        const sourceRatio = sourceWidth / sourceHeight;
+
+        let sX = 0, sY = 0, sWidth = sourceWidth, sHeight = sourceHeight;
+
+        if (sourceRatio > targetRatio) {
+          sWidth = sourceHeight * targetRatio;
+          sX = (sourceWidth - sWidth) / 2;
+        } else {
+          sHeight = sourceWidth / targetRatio;
+          sY = (sourceHeight - sHeight) / 2;
+        }
+
+        ctx.drawImage(img, sX, sY, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        callback(compressedBase64);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFleetPhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      processImageFile(file, 400, 300, (base64) => {
+        setNewAmbulance(p => ({ ...p, photo: base64 }));
+      });
+    }
+  };
+
+  const handleStaffPhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      processImageFile(file, 200, 200, (base64) => {
+        setNewStaff(p => ({ ...p, photo: base64 }));
+      });
+    }
+  };
+
+  const handleCreateAmbulance = async (e) => {
+    e.preventDefault();
+    setFleetLoading(true);
+    setFleetError(null);
+    setFleetSuccess(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ambulances`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(newAmbulance)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to register ambulance');
+      setFleetSuccess(`✅ Ambulance ${data.vehicle_number} registered successfully!`);
+      setNewAmbulance({ vehicle_number: '', model: '', photo: '' });
+      setShowCreateFleetForm(false);
+      triggerFetch();
+    } catch (err) {
+      setFleetError(err.message);
+    } finally {
+      setFleetLoading(false);
+    }
+  };
+
+  const handleDeleteAmbulance = async (id, vehicleNumber) => {
+    if (!window.confirm(`Are you sure you want to remove ambulance ${vehicleNumber} from the system?`)) return;
+    setFleetLoading(true);
+    setFleetError(null);
+    setFleetSuccess(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/ambulances/${id}`, {
+        method: 'DELETE',
+        headers
+      });
+      if (!res.ok) throw new Error('Failed to delete ambulance');
+      setFleetSuccess(`🗑 Ambulance ${vehicleNumber} removed.`);
+      triggerFetch();
+    } catch (err) {
+      setFleetError(err.message);
+    } finally {
+      setFleetLoading(false);
+    }
+  };
+
+  // Staff password reset state
+  const [resetPasswordStaff, setResetPasswordStaff] = useState(null);
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [showNewStaffPasswordToggle, setShowNewStaffPasswordToggle] = useState(false);
+
+  // Chairman password state
+  const [chairmanPassword, setChairmanPassword] = useState('');
+  const [chairmanLoading, setChairmanLoading] = useState(false);
+  const [chairmanSuccess, setChairmanSuccess] = useState(null);
+  const [chairmanError, setChairmanError] = useState(null);
+  const [showChairmanPassword, setShowChairmanPassword] = useState(false);
 
   const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
 
@@ -67,9 +183,17 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
     setStaffLoading(true);
     setStaffError(null);
     setStaffSuccess(null);
+    
+    // CNIC Regex Format Verification (PK format: 12345-1234567-1)
+    const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
+    if (!cnicRegex.test(newStaff.cnic.trim())) {
+      setStaffError("Invalid CNIC format. It must be in the format XXXXX-XXXXXXX-X");
+      setStaffLoading(false);
+      return;
+    }
+
     try {
       const payload = { ...newStaff };
-      if (payload.role !== 'driver') delete payload.ambulance_id;
       const res = await fetch(`${BACKEND_URL}/api/staff`, {
         method: 'POST', headers,
         body: JSON.stringify(payload)
@@ -78,7 +202,7 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
       if (!res.ok) throw new Error(data.error || 'Failed to create account');
       setStaff(prev => [...prev, data]);
       setStaffSuccess(`✅ Account created: @${data.username} (${data.role})`);
-      setNewStaff({ name: '', username: '', password: '', role: 'driver', phone: '', ambulance_id: '' });
+      setNewStaff({ name: '', username: '', password: '', role: 'driver', phone: '', cnic: '', photo: '' });
       setShowCreateForm(false);
     } catch (e) {
       setStaffError(e.message);
@@ -99,6 +223,65 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
       setStaffError(e.message);
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleUpdateStaffPassword = async (e) => {
+    e.preventDefault();
+    if (!newStaffPassword || newStaffPassword.trim().length < 4) {
+      setStaffError("Password must be at least 4 characters long.");
+      return;
+    }
+    setStaffLoading(true);
+    setStaffError(null);
+    setStaffSuccess(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/staff/${resetPasswordStaff.id}/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: newStaffPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update password');
+      setStaffSuccess(`✅ Password for @${resetPasswordStaff.username} updated successfully!`);
+      setResetPasswordStaff(null);
+      setNewStaffPassword('');
+    } catch (err) {
+      setStaffError(err.message);
+    } finally {
+      setStaffLoading(false);
+    }
+  };
+
+  const handleUpdateChairmanPassword = async (e) => {
+    e.preventDefault();
+    if (!chairmanPassword || chairmanPassword.trim().length < 4) {
+      setChairmanError("Password must be at least 4 characters long.");
+      return;
+    }
+    setChairmanLoading(true);
+    setChairmanError(null);
+    setChairmanSuccess(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/chairman/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ password: chairmanPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update password');
+      setChairmanSuccess("👑 Chairman password updated successfully!");
+      setChairmanPassword('');
+    } catch (err) {
+      setChairmanError(err.message);
+    } finally {
+      setChairmanLoading(false);
     }
   };
 
@@ -125,6 +308,7 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
   const TABS = [
     { key: 'analytics', label: '📊 Analytics Dashboard' },
     { key: 'staff', label: '👥 Manage Staff' },
+    { key: 'fleet', label: '🚑 Manage Fleet' },
   ];
 
   return (
@@ -451,7 +635,7 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
               <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <UserPlus size={16} style={{ color: 'var(--primary-red)' }} /> Create New Staff Account
               </h3>
-              <form onSubmit={handleCreateStaff} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem' }}>
+              <form onSubmit={handleCreateStaff} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Full Name *</label>
@@ -461,8 +645,22 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Username *</label>
-                  <input className="form-input" type="text" placeholder="e.g. ahmed (no spaces)" required
+                  <input className="form-input" type="text" placeholder="e.g. ahmed" required
                     value={newStaff.username} onChange={e => setNewStaff(p => ({ ...p, username: e.target.value.replace(/\s/g, '').toLowerCase() }))} />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">CNIC Number *</label>
+                  <input 
+                    className="form-input" 
+                    type="text" 
+                    placeholder="54400-XXXXXXX-X" 
+                    required
+                    pattern="^\d{5}-\d{7}-\d{1}$"
+                    title="CNIC must match format XXXXX-XXXXXXX-X (e.g. 54400-1234567-1)"
+                    value={newStaff.cnic} 
+                    onChange={e => setNewStaff(p => ({ ...p, cnic: e.target.value }))} 
+                  />
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -474,22 +672,12 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Phone (optional)</label>
-                  <input className="form-input" type="text" placeholder="+92 300 0000000"
+                  <label className="form-label">Phone *</label>
+                  <input className="form-input" type="text" placeholder="+92 300 0000000" required
                     value={newStaff.phone} onChange={e => setNewStaff(p => ({ ...p, phone: e.target.value }))} />
                 </div>
 
-                {newStaff.role === 'driver' && (
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Link to Ambulance</label>
-                    <select className="form-input" value={newStaff.ambulance_id} onChange={e => setNewStaff(p => ({ ...p, ambulance_id: e.target.value }))}>
-                      <option value="">— None —</option>
-                      {ambulances.map(a => (
-                        <option key={a.id} value={a.id}>{a.vehicle_number} ({a.driver_name})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Password *</label>
@@ -509,6 +697,14 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                       Auto
                     </button>
                   </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Staff Photo *</label>
+                  <input type="file" accept="image/*" required onChange={handleStaffPhotoChange} style={{ fontSize: '0.8rem', width: '100%' }} />
+                  {newStaff.photo && (
+                    <img src={newStaff.photo} alt="Preview" style={{ marginTop: '0.5rem', width: '60px', height: '45px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                  )}
                 </div>
 
                 {/* Submit — spans full width */}
@@ -542,11 +738,14 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                      <th style={{ padding: '0.6rem' }}>Photo</th>
                       <th style={{ padding: '0.6rem' }}>Name</th>
+                      <th style={{ padding: '0.6rem' }}>CNIC</th>
                       <th style={{ padding: '0.6rem' }}>Username</th>
                       <th style={{ padding: '0.6rem' }}>Role</th>
                       <th style={{ padding: '0.6rem' }}>Phone</th>
                       <th style={{ padding: '0.6rem' }}>Ambulance</th>
+                      <th style={{ padding: '0.6rem', textAlign: 'center' }}>Trips ✓</th>
                       <th style={{ padding: '0.6rem' }}>Created</th>
                       <th style={{ padding: '0.6rem', textAlign: 'center' }}>Action</th>
                     </tr>
@@ -556,7 +755,15 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                       const amb = s.ambulance_id ? ambulances.find(a => a.id === s.ambulance_id) : null;
                       return (
                         <tr key={s.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.03)', verticalAlign: 'middle' }}>
+                          <td style={{ padding: '0.6rem' }}>
+                            {s.photo ? (
+                              <img src={s.photo} alt={s.name} style={{ width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                            ) : (
+                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>👤</div>
+                            )}
+                          </td>
                           <td style={{ padding: '0.6rem', fontWeight: 'bold' }}>{s.name}</td>
+                          <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{s.cnic || '—'}</td>
                           <td style={{ padding: '0.6rem' }}>
                             <span style={{ fontFamily: 'monospace', background: '#f1f5f9', padding: '0.1rem 0.4rem', borderRadius: '4px', fontSize: '0.75rem' }}>@{s.username}</span>
                           </td>
@@ -566,19 +773,33 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                             </span>
                           </td>
                           <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{s.phone || '—'}</td>
-                          <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{amb ? amb.vehicle_number : '—'}</td>
+                          <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{amb ? amb.vehicle_number : (s.ambulance_id || '—')}</td>
+                          <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: s.trips_completed > 0 ? 'rgba(34,197,94,0.1)' : '#f1f5f9', color: s.trips_completed > 0 ? '#15803d' : 'var(--text-muted)', fontWeight: 'bold', fontSize: '0.78rem', padding: '0.2rem 0.55rem', borderRadius: '6px', border: s.trips_completed > 0 ? '1px solid rgba(34,197,94,0.3)' : '1px solid var(--border-color)' }}>
+                              🏁 {s.trips_completed ?? 0}
+                            </span>
+                          </td>
                           <td style={{ padding: '0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
                             {s.created_at ? new Date(s.created_at).toLocaleDateString() : 'Pre-seeded'}
                           </td>
                           <td style={{ padding: '0.6rem', textAlign: 'center' }}>
-                            <button
-                              onClick={() => handleDeleteStaff(s.id, s.name)}
-                              disabled={deletingId === s.id}
-                              className="btn btn-secondary"
-                              style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', color: '#dc2626', borderColor: 'rgba(220,38,38,0.3)', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
-                            >
-                              <Trash2 size={12} /> {deletingId === s.id ? 'Removing...' : 'Remove'}
-                            </button>
+                            <div style={{ display: 'flex', gap: '0.4rem', justifyContent: 'center' }}>
+                              <button
+                                onClick={() => { setResetPasswordStaff(s); setNewStaffPassword(''); }}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                              >
+                                🔑 Reset PW
+                              </button>
+                              <button
+                                onClick={() => handleDeleteStaff(s.id, s.name)}
+                                disabled={deletingId === s.id}
+                                className="btn btn-secondary"
+                                style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', color: '#dc2626', borderColor: 'rgba(220,38,38,0.3)', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                              >
+                                <Trash2 size={12} /> {deletingId === s.id ? 'Removing...' : 'Remove'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -589,11 +810,291 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
             )}
           </div>
 
+          {/* Chairman Self-Password Management */}
+          <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(0,0,0,0.06)' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+              👑 Chairman Password Management
+            </h3>
+
+            {chairmanSuccess && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '10px', padding: '0.65rem 0.85rem', color: '#15803d', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+                <CheckCircle size={15} /> {chairmanSuccess}
+              </div>
+            )}
+            {chairmanError && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '10px', padding: '0.65rem 0.85rem', color: '#b91c1c', fontSize: '0.82rem', marginBottom: '0.75rem' }}>
+                <XCircle size={15} /> {chairmanError}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdateChairmanPassword} style={{ display: 'flex', alignItems: 'flex-end', gap: '1rem', flexWrap: 'wrap' }}>
+              <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>New Chairman Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="form-input"
+                    type={showChairmanPassword ? 'text' : 'password'}
+                    placeholder="Enter new chairman password"
+                    required
+                    value={chairmanPassword}
+                    onChange={e => setChairmanPassword(e.target.value)}
+                    style={{ paddingRight: '2.5rem', marginBottom: 0 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowChairmanPassword(v => !v)}
+                    style={{
+                      position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      color: 'var(--text-muted)', fontSize: '0.75rem'
+                    }}
+                  >
+                    {showChairmanPassword ? '🙈' : '👁'}
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" className="btn btn-danger" disabled={chairmanLoading} style={{ padding: '0.65rem 1.25rem', height: '38px', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                {chairmanLoading ? 'Saving...' : '🔑 Update Chairman Password'}
+              </button>
+            </form>
+          </div>
+
           {/* Security Note */}
           <div style={{ padding: '0.85rem 1rem', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', borderRadius: '10px', fontSize: '0.78rem', color: '#92400e' }}>
             🔒 <b>Security Notice:</b> Only the Chairman can create or remove Driver and Dispatcher accounts.
             Citizens do not need accounts — they access the system instantly via the emergency portal.
             Always share credentials securely and directly with staff members.
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB: MANAGE FLEET ── */}
+      {activeTab === 'fleet' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Fleet Header Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div>
+              <h2 style={{ fontSize: '1.05rem', fontWeight: 800, margin: 0 }}>🚑 Ambulance Fleet Management</h2>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0.2rem 0 0 0' }}>
+                Register and manage official ambulances for the Gwadar fleet.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                onClick={() => { setShowCreateFleetForm(v => !v); setFleetError(null); setFleetSuccess(null); }}
+                className="btn btn-danger"
+                style={{ padding: '0.5rem 0.85rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}
+              >
+                {showCreateFleetForm ? 'Cancel' : 'Register Ambulance'}
+              </button>
+            </div>
+          </div>
+
+          {/* Feedback messages */}
+          {fleetSuccess && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '10px', padding: '0.65rem 0.85rem', color: '#15803d', fontSize: '0.82rem' }}>
+              <CheckCircle size={15} /> {fleetSuccess}
+            </div>
+          )}
+          {fleetError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.3)', borderRadius: '10px', padding: '0.65rem 0.85rem', color: '#b91c1c', fontSize: '0.82rem' }}>
+              <XCircle size={15} /> {fleetError}
+            </div>
+          )}
+
+          {/* Register Ambulance Form */}
+          {showCreateFleetForm && (
+            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)', border: '2px solid rgba(239,68,68,0.15)' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Truck size={16} style={{ color: 'var(--primary-red)' }} /> Register New Ambulance
+              </h3>
+              <form onSubmit={handleCreateAmbulance} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Vehicle Plate Number *</label>
+                  <input className="form-input" type="text" placeholder="e.g. GWD-1234" required
+                    value={newAmbulance.vehicle_number} onChange={e => setNewAmbulance(p => ({ ...p, vehicle_number: e.target.value.toUpperCase() }))} />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Model Description *</label>
+                  <input className="form-input" type="text" placeholder="e.g. Toyota Hiace 2024" required
+                    value={newAmbulance.model} onChange={e => setNewAmbulance(p => ({ ...p, model: e.target.value }))} />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Ambulance Photo *</label>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleFleetPhotoChange} 
+                    style={{ fontSize: '0.8rem', width: '100%' }}
+                    required
+                  />
+                  {newAmbulance.photo && (
+                    <img 
+                      src={newAmbulance.photo} 
+                      alt="Ambulance Preview" 
+                      style={{ marginTop: '0.5rem', width: '80px', height: '60px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }}
+                    />
+                  )}
+                </div>
+
+                <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.5rem' }}>
+                  <button type="button" className="btn btn-secondary" style={{ padding: '0.65rem 1.25rem' }}
+                    onClick={() => setShowCreateFleetForm(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-danger" disabled={fleetLoading}
+                    style={{ padding: '0.65rem 1.25rem' }}>
+                    {fleetLoading ? 'Registering...' : 'Register Ambulance'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Fleet Table */}
+          <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+              <Truck size={16} style={{ color: 'var(--primary-blue)' }} /> Ambulance Roster
+              <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 400 }}>{ambulances.length} vehicles</span>
+            </h3>
+
+            {ambulances.length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                No ambulances registered. Click "Register Ambulance" to add one.
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                      <th style={{ padding: '0.6rem' }}>Photo</th>
+                      <th style={{ padding: '0.6rem' }}>Vehicle Number</th>
+                      <th style={{ padding: '0.6rem' }}>Model</th>
+                      <th style={{ padding: '0.6rem' }}>Assigned Driver</th>
+                      <th style={{ padding: '0.6rem' }}>Phone</th>
+                      <th style={{ padding: '0.6rem' }}>Status</th>
+                      <th style={{ padding: '0.6rem', textAlign: 'center' }}>Trips ✓</th>
+                      <th style={{ padding: '0.6rem', textAlign: 'center' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ambulances.map(a => (
+                      <tr key={a.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.03)', verticalAlign: 'middle' }}>
+                        <td style={{ padding: '0.6rem' }}>
+                          {a.photo ? (
+                            <img src={a.photo} alt="Ambulance" style={{ width: '60px', height: '45px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
+                          ) : (
+                            <div style={{ width: '60px', height: '45px', borderRadius: '4px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>🚑</div>
+                          )}
+                        </td>
+                        <td style={{ padding: '0.6rem', fontWeight: 'bold' }}>{a.vehicle_number}</td>
+                        <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{a.model || 'Standard Model'}</td>
+                        <td style={{ padding: '0.6rem', fontWeight: 500 }}>{a.driver_name || 'No Driver Assigned'}</td>
+                        <td style={{ padding: '0.6rem', color: 'var(--text-secondary)' }}>{a.driver_phone || '—'}</td>
+                        <td style={{ padding: '0.6rem' }}>
+                          <span className={`badge ${a.status === 'Available' ? 'badge-green' : 'badge-red'}`} style={{ fontSize: '0.65rem' }}>{a.status}</span>
+                        </td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', background: a.trips_completed > 0 ? 'rgba(59,130,246,0.1)' : '#f1f5f9', color: a.trips_completed > 0 ? '#1d4ed8' : 'var(--text-muted)', fontWeight: 'bold', fontSize: '0.78rem', padding: '0.2rem 0.55rem', borderRadius: '6px', border: a.trips_completed > 0 ? '1px solid rgba(59,130,246,0.3)' : '1px solid var(--border-color)' }}>
+                            🚑 {a.trips_completed ?? 0}
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.6rem', textAlign: 'center' }}>
+                          <button
+                            onClick={() => handleDeleteAmbulance(a.id, a.vehicle_number)}
+                            disabled={fleetLoading}
+                            className="btn btn-secondary"
+                            style={{ padding: '0.35rem 0.65rem', fontSize: '0.72rem', color: '#dc2626', borderColor: 'rgba(220,38,38,0.3)', display: 'inline-flex', gap: '0.25rem', alignItems: 'center' }}
+                          >
+                            <Trash2 size={12} /> Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── STAFF PASSWORD RESET MODAL ── */}
+      {resetPasswordStaff && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 9999, padding: '1rem'
+        }}>
+          <div className="glass-panel" style={{
+            background: 'white', padding: '1.75rem', borderRadius: '16px',
+            width: '100%', maxWidth: '400px', boxShadow: 'var(--shadow-2xl)',
+            border: '2px solid rgba(239,68,68,0.2)'
+          }}>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              🔑 Reset Password
+            </h3>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+              Change credentials for <b>{resetPasswordStaff.name}</b> (<code>@{resetPasswordStaff.username}</code>).
+            </p>
+
+            <form onSubmit={handleUpdateStaffPassword}>
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label className="form-label" style={{ fontSize: '0.75rem' }}>New Secure Password</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <div style={{ flex: 1, position: 'relative' }}>
+                    <input
+                      className="form-input"
+                      type={showNewStaffPasswordToggle ? 'text' : 'password'}
+                      placeholder="Enter new password"
+                      required
+                      value={newStaffPassword}
+                      onChange={e => setNewStaffPassword(e.target.value)}
+                      style={{ paddingRight: '2.5rem', marginBottom: 0 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewStaffPasswordToggle(v => !v)}
+                      style={{
+                        position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)',
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--text-muted)', fontSize: '0.75rem'
+                      }}
+                    >
+                      {showNewStaffPasswordToggle ? '🙈' : '👁'}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setNewStaffPassword(generatePassword())}
+                    style={{ padding: '0 0.65rem', fontSize: '0.7rem', whiteSpace: 'nowrap' }}
+                  >
+                    Auto
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => { setResetPasswordStaff(null); setNewStaffPassword(''); }}
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-danger"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                >
+                  Save Password
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

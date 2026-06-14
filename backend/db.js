@@ -20,7 +20,9 @@ const initialData = {
       username: "chairman",
       phone: "03330001122",
       password: "chairman123",
-      role: "chairman"
+      role: "chairman",
+      cnic: "54400-1111111-1",
+      photo: ""
     },
     // Dispatcher (created by Chairman)
     {
@@ -29,7 +31,9 @@ const initialData = {
       username: "saleem",
       phone: "+92 300 0000000",
       password: "dispatch123",
-      role: "dispatcher"
+      role: "dispatcher",
+      cnic: "54400-2222222-2",
+      photo: ""
     },
     // Drivers (created by Chairman, linked to their ambulances)
     {
@@ -39,7 +43,9 @@ const initialData = {
       phone: "+92 300 1234567",
       password: "driver123",
       role: "driver",
-      ambulance_id: "amb-01"
+      ambulance_id: "amb-01",
+      cnic: "54400-3333333-3",
+      photo: ""
     },
     {
       id: "usr-driver-02",
@@ -48,7 +54,9 @@ const initialData = {
       phone: "+92 312 9876543",
       password: "driver123",
       role: "driver",
-      ambulance_id: "amb-02"
+      ambulance_id: "amb-02",
+      cnic: "54400-4444444-4",
+      photo: ""
     },
     {
       id: "usr-driver-03",
@@ -57,7 +65,9 @@ const initialData = {
       phone: "+92 333 4567890",
       password: "driver123",
       role: "driver",
-      ambulance_id: "amb-03"
+      ambulance_id: "amb-03",
+      cnic: "54400-5555555-5",
+      photo: ""
     },
     {
       id: "usr-driver-04",
@@ -66,7 +76,9 @@ const initialData = {
       phone: "+92 321 2468135",
       password: "driver123",
       role: "driver",
-      ambulance_id: "amb-04"
+      ambulance_id: "amb-04",
+      cnic: "54400-6666666-6",
+      photo: ""
     },
     {
       id: "usr-driver-05",
@@ -75,7 +87,9 @@ const initialData = {
       phone: "+92 345 1357924",
       password: "driver123",
       role: "driver",
-      ambulance_id: "amb-05"
+      ambulance_id: "amb-05",
+      cnic: "54400-7777777-7",
+      photo: ""
     }
   ],
   ambulances: [
@@ -87,7 +101,9 @@ const initialData = {
       status: "Available",
       latitude: 25.1225,
       longitude: 62.3210,
-      bearing: 0
+      bearing: 0,
+      model: "Toyota Hiace 2024",
+      photo: ""
     },
     {
       id: "amb-02",
@@ -97,7 +113,9 @@ const initialData = {
       status: "Available",
       latitude: 25.1380,
       longitude: 62.3020,
-      bearing: 0
+      bearing: 0,
+      model: "Toyota Hiace 2023",
+      photo: ""
     },
     {
       id: "amb-03",
@@ -107,7 +125,9 @@ const initialData = {
       status: "Available",
       latitude: 25.1150,
       longitude: 62.3350,
-      bearing: 0
+      bearing: 0,
+      model: "Suzuki APV 2024",
+      photo: ""
     },
     {
       id: "amb-04",
@@ -117,7 +137,9 @@ const initialData = {
       status: "Available",
       latitude: 25.1280,
       longitude: 62.3480,
-      bearing: 0
+      bearing: 0,
+      model: "Toyota TownAce 2022",
+      photo: ""
     },
     {
       id: "amb-05",
@@ -127,7 +149,9 @@ const initialData = {
       status: "Available",
       latitude: 25.1060,
       longitude: 62.3280,
-      bearing: 0
+      bearing: 0,
+      model: "Suzuki APV 2023",
+      photo: ""
     }
   ],
   hospitals: [
@@ -228,6 +252,8 @@ const db = {
       phone: staffData.phone || '',
       password: staffData.password,
       role: staffData.role,
+      cnic: staffData.cnic || '',
+      photo: staffData.photo || '',
       ...(staffData.role === 'driver' && staffData.ambulance_id ? { ambulance_id: staffData.ambulance_id } : {}),
       created_at: new Date().toISOString(),
       created_by: staffData.created_by || 'chairman'
@@ -244,13 +270,100 @@ const db = {
     saveDb(data);
     return true;
   },
+  updateUserPassword: (id, newPassword) => {
+    const data = loadDb();
+    const index = data.users.findIndex(u => u.id === id);
+    if (index === -1) return null;
+    data.users[index].password = newPassword;
+    saveDb(data);
+    return data.users[index];
+  },
+  updateUserAmbulance: (id, ambulanceId) => {
+    const data = loadDb();
+    const index = data.users.findIndex(u => u.id === id);
+    if (index === -1) return null;
+    data.users[index].ambulance_id = ambulanceId;
+    saveDb(data);
+    return data.users[index];
+  },
+  incrementDriverTrips: (driverId) => {
+    const data = loadDb();
+    const index = data.users.findIndex(u => u.id === driverId);
+    if (index === -1) return null;
+    data.users[index].trips_completed = (data.users[index].trips_completed || 0) + 1;
+    saveDb(data);
+    return data.users[index];
+  },
+  incrementAmbulanceTrips: (ambulanceId) => {
+    const data = loadDb();
+    const index = data.ambulances.findIndex(a => a.id === ambulanceId);
+    if (index === -1) return null;
+    data.ambulances[index].trips_completed = (data.ambulances[index].trips_completed || 0) + 1;
+    saveDb(data);
+    return data.ambulances[index];
+  },
 
   // Ambulances
-  getAmbulances: () => loadDb().ambulances,
-  getAmbulanceById: (id) => loadDb().ambulances.find(a => a.id === id),
-  updateAmbulance: (id, updates) => {
+  getAmbulances: () => {
+    const data = loadDb();
+    return data.ambulances.map(amb => {
+      const driver = data.users.find(u => 
+        u.role === 'driver' && 
+        (u.ambulance_id === amb.id || (u.ambulance_id && u.ambulance_id.trim().toLowerCase() === amb.vehicle_number.trim().toLowerCase()))
+      );
+      return {
+        ...amb,
+        driver_name: driver ? driver.name : 'No Driver Assigned',
+        driver_phone: driver ? driver.phone : '—'
+      };
+    });
+  },
+  getAmbulanceById: (id) => {
+    const data = loadDb();
+    const amb = data.ambulances.find(a => a.id === id || (a.vehicle_number && id && a.vehicle_number.trim().toLowerCase() === id.trim().toLowerCase()));
+    if (!amb) return null;
+    const driver = data.users.find(u => 
+      u.role === 'driver' && 
+      (u.ambulance_id === amb.id || (u.ambulance_id && u.ambulance_id.trim().toLowerCase() === amb.vehicle_number.trim().toLowerCase()))
+    );
+    return {
+      ...amb,
+      driver_name: driver ? driver.name : 'No Driver Assigned',
+      driver_phone: driver ? driver.phone : '—'
+    };
+  },
+  createAmbulance: (ambData) => {
+    const data = loadDb();
+    const exists = data.ambulances.find(a => a.vehicle_number.trim().toLowerCase() === ambData.vehicle_number.trim().toLowerCase());
+    if (exists) return { error: 'Ambulance vehicle number already exists' };
+
+    const newAmb = {
+      id: `amb-${uuidv4().slice(0,8)}`,
+      vehicle_number: ambData.vehicle_number.trim(),
+      model: ambData.model.trim(),
+      photo: ambData.photo || '',
+      status: 'Available',
+      latitude: 25.1219,
+      longitude: 62.3254,
+      bearing: 0,
+      siren: false,
+      created_at: new Date().toISOString()
+    };
+    data.ambulances.push(newAmb);
+    saveDb(data);
+    return newAmb;
+  },
+  deleteAmbulance: (id) => {
     const data = loadDb();
     const index = data.ambulances.findIndex(a => a.id === id);
+    if (index === -1) return false;
+    data.ambulances.splice(index, 1);
+    saveDb(data);
+    return true;
+  },
+  updateAmbulance: (id, updates) => {
+    const data = loadDb();
+    const index = data.ambulances.findIndex(a => a.id === id || (a.vehicle_number && id && a.vehicle_number.trim().toLowerCase() === id.trim().toLowerCase()));
     if (index !== -1) {
       data.ambulances[index] = { ...data.ambulances[index], ...updates };
       saveDb(data);
@@ -289,6 +402,7 @@ const db = {
       longitude: parseFloat(requestData.longitude),
       location_name: requestData.location_name || "Gwadar",
       assigned_ambulance_id: null,
+      assigned_driver_id: null,
       assigned_hospital_id: null,
       chat_history: [],
       voice_recordings: [],
