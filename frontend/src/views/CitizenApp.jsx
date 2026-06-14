@@ -675,6 +675,22 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
           }}>
             <Phone size={12} /> Call 0335-0267742
           </a>
+
+          <a href="#/login" className="btn" style={{
+            padding: '0.35rem 0.75rem',
+            fontSize: '0.75rem',
+            background: '#f1f5f9',
+            color: 'var(--text-primary)',
+            borderRadius: '20px',
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            fontWeight: 'bold',
+            border: '1px solid #cbd5e1'
+          }}>
+            🔒 Staff Login
+          </a>
         </div>
       </header>
 
