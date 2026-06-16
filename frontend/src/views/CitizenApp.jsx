@@ -738,7 +738,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
           {/* Main 2-column home dashboard */}
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
             gap: '1.5rem'
           }}>
             
@@ -1045,7 +1045,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
         /* Active Tracking Screen Layout */
         <div style={{ 
           display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
           gap: '1.5rem',
           alignItems: 'stretch'
         }}>

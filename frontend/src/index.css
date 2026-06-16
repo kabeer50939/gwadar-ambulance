@@ -412,15 +412,26 @@ body {
 /* Grid layout systems for Dashboards */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 350px 1fr 350px;
-  gap: 1.5rem;
-  height: calc(100vh - 120px);
+  grid-template-columns: 310px 1fr 310px;
+  gap: 1.25rem;
+  height: calc(100vh - 100px);
+}
+
+.driver-dashboard-grid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 1.25rem;
+  min-height: calc(100vh - 90px);
 }
 
 @media (max-width: 1200px) {
   .dashboard-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 310px 1fr;
     height: auto;
+    gap: 1.25rem;
+  }
+  .dashboard-grid > :last-child {
+    grid-column: span 2;
   }
 }
 
@@ -677,6 +688,9 @@ body {
     grid-template-columns: 1fr !important;
     height: auto !important;
     gap: 1.5rem !important;
+  }
+  .dashboard-grid > :last-child {
+    grid-column: span 1 !important;
   }
   .dashboard-sidebar {
     height: 480px !important;

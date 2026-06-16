@@ -403,7 +403,7 @@ export default function Dispatcher({
 
   return (
     <div className="view-container" style={{ maxWidth: '100%', padding: '1rem' }}>
-      <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '310px 1fr 310px', gap: '1.25rem', height: 'calc(100vh - 100px)' }}>
+      <div className="dashboard-grid">
         
         {/* Left Column: Incidents List */}
         <div className="dashboard-sidebar glass-panel dashboard-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>

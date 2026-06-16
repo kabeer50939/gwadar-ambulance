@@ -598,7 +598,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
   return (
     <div className="view-container" style={{ padding: '1rem', maxWidth: '100%', margin: 0 }}>
-      <div className="driver-dashboard-grid" style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '1.25rem', minHeight: 'calc(100vh - 90px)' }}>
+      <div className="driver-dashboard-grid">
         
         {/* Left Column: Driver Control Panel */}
         <div className="dashboard-sidebar" style={{ gap: '1rem' }}>
