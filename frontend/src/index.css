@@ -645,6 +645,17 @@ body {
    MOBILE RESPONSIVENESS OVERRIDES
    ────────────────────────────────────────────────────────────────────────── */
 
+.citizen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  background: white;
+  box-shadow: var(--shadow-lg);
+}
+
 /* App Main Staff Header */
 @media (max-width: 768px) {
   .app-header {
@@ -654,7 +665,7 @@ body {
     gap: 0.75rem !important;
     align-items: center !important;
   }
-  .app-header > div {
+  .app-header > .header-controls {
     flex-direction: column !important;
     gap: 0.5rem !important;
     align-items: center !important;
@@ -667,7 +678,7 @@ body {
 @media (max-width: 768px) {
   .citizen-header {
     flex-direction: column !important;
-    gap: 1rem !important;
+    gap: 0.75rem !important;
     align-items: center !important;
     padding: 1rem !important;
     text-align: center !important;
@@ -675,10 +686,24 @@ body {
   }
   .citizen-header > div {
     justify-content: center !important;
-    flex-direction: column !important;
     width: 100% !important;
     align-items: center !important;
     gap: 0.5rem !important;
+  }
+  .citizen-header .header-branding {
+    display: flex !important;
+    flex-direction: row !important;
+  }
+  .citizen-header .header-profile {
+    display: flex !important;
+    flex-direction: row !important;
+    font-size: 0.85rem !important;
+  }
+  .citizen-header .header-actions {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
   }
 }
 

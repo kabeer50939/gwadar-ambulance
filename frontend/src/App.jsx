@@ -259,7 +259,7 @@ export default function App() {
               <span>GWADAR AMBULANCE</span>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+            <div className="header-controls" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: '0.8rem' }}>
                 <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
                   {currentUser.username ? `@${currentUser.username}` : currentUser.name}

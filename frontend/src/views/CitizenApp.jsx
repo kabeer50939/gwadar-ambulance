@@ -646,18 +646,9 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     <div className="view-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       
       {/* Thin Header Bar */}
-      <header className="glass-panel" style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        padding: '0.75rem 1.25rem', 
-        borderRadius: '12px', 
-        marginBottom: '1.5rem',
-        background: 'white',
-        boxShadow: 'var(--shadow-lg)'
-      }}>
+      <header className="citizen-header glass-panel">
         {/* Branding */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <div className="header-branding" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <div style={{
             width: '32px', height: '32px',
             backgroundColor: 'var(--primary-red)',
@@ -672,13 +663,13 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
         </div>
 
         {/* Profile Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+        <div className="header-profile" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
           <User size={14} style={{ color: 'var(--primary-blue)' }} />
           <span><b>{currentUser?.name || 'Citizen'}</b> ({currentUser?.phone || ''})</span>
         </div>
 
         {/* Language & Hotline */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ display: 'flex', gap: '0.2rem', background: '#f1f5f9', padding: '0.2rem', borderRadius: '20px' }}>
             <button 
               onClick={() => setLang('en')} 
