@@ -158,8 +158,8 @@ const initialData = {
     {
       id: "hosp-01",
       name: "Gwadar Indus Hospital (Pak-China Friendship)",
-      latitude: 25.1225,
-      longitude: 62.3450,
+      latitude: 25.186108,
+      longitude: 62.332846,
       contact_number: "+92 86 4211111",
       available_beds: 15,
       total_beds: 120,
@@ -167,37 +167,15 @@ const initialData = {
       facilities: ["Emergency Care", "ICU", "Surgery", "Pediatrics", "Trauma Center"]
     },
     {
-      id: "hosp-02",
-      name: "GDA Hospital (Gwadar Development Authority)",
-      latitude: 25.1380,
-      longitude: 62.3210,
-      contact_number: "+92 86 4211222",
-      available_beds: 8,
-      total_beds: 50,
-      icu_ventilators: 3,
-      facilities: ["Emergency Care", "Outpatient Clinic", "Maternity Ward", "Laboratory"]
-    },
-    {
       id: "hosp-03",
       name: "DHQ Hospital Gwadar",
-      latitude: 25.1160,
-      longitude: 62.3240,
+      latitude: 25.134696,
+      longitude: 62.321995,
       contact_number: "+92 86 4210080",
       available_beds: 5,
       total_beds: 60,
       icu_ventilators: 2,
       facilities: ["General Emergency", "X-Ray", "Pharmacy", "Operation Theater"]
-    },
-    {
-      id: "hosp-04",
-      name: "Red Crescent Medical Center",
-      latitude: 25.1280,
-      longitude: 62.3080,
-      contact_number: "+92 86 4210456",
-      available_beds: 4,
-      total_beds: 25,
-      icu_ventilators: 0,
-      facilities: ["First Aid", "Ambulance Station", "Pharmacy"]
     }
   ],
   requests: []

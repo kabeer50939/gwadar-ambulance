@@ -134,7 +134,7 @@ app.post('/api/citizen/session', (req, res) => {
 });
 
 // 2. Get ambulances
-app.get('/api/ambulances', authenticate, requireRole(['dispatcher', 'driver', 'chairman']), (req, res) => {
+app.get('/api/ambulances', authenticate, requireRole(['dispatcher', 'driver', 'chairman', 'citizen']), (req, res) => {
   try {
     const ambulances = db.getAmbulances();
     res.json(ambulances);
@@ -666,16 +666,23 @@ app.put('/api/requests/:id/location', authenticate, requireRole(['citizen']), (r
     const request = db.getRequestById(id);
     if (!request) return res.status(404).json({ error: "Request not found" });
 
-    // Validate that the request belongs to the citizen
-    if (request.citizen_id !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden: Not your request" });
-    }
-
-    const updatedRequest = db.updateRequest(id, {
+    const updates = {
       latitude: parseFloat(latitude),
       longitude: parseFloat(longitude),
       location_name: "Live GPS Location"
-    });
+    };
+
+    // Validate that the request belongs to the citizen, or claim it if created by staff/dispatcher
+    if (request.citizen_id !== req.user.id) {
+      const isStaff = db.getUsers().some(u => u.id === request.citizen_id && (u.role === 'dispatcher' || u.role === 'chairman'));
+      if (isStaff || !request.citizen_id) {
+        updates.citizen_id = req.user.id;
+      } else {
+        return res.status(403).json({ error: "Forbidden: Not your request" });
+      }
+    }
+
+    const updatedRequest = db.updateRequest(id, updates);
 
     const payload = {
       request: updatedRequest,

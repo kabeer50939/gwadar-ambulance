@@ -5,6 +5,19 @@ import MapComponent from '../components/MapComponent';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
+const getDistance = (lat1, lon1, lat2, lon2) => {
+  if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return 0;
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 export default function Dispatcher({
   token,
   currentUser,
@@ -715,12 +728,12 @@ export default function Dispatcher({
                     )
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr', gap: '0.5rem' }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem' }}>Ambulance Unit</label>
                       <select
                         className="form-input"
-                        style={{ padding: '0.35rem', fontSize: '0.8rem' }}
+                        style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%', textOverflow: 'ellipsis' }}
                         value={manualAmbulanceId}
                         onChange={e => setManualAmbulanceId(e.target.value)}
                       >
@@ -741,7 +754,7 @@ export default function Dispatcher({
                       <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem' }}>Assigned Driver</label>
                       <select
                         className="form-input"
-                        style={{ padding: '0.35rem', fontSize: '0.8rem' }}
+                        style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%', textOverflow: 'ellipsis' }}
                         value={selectedDriverId}
                         onChange={e => setSelectedDriverId(e.target.value)}
                       >
@@ -762,16 +775,22 @@ export default function Dispatcher({
                       <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem' }}>Target Hospital</label>
                       <select
                         className="form-input"
-                        style={{ padding: '0.35rem', fontSize: '0.8rem' }}
+                        style={{ padding: '0.35rem', fontSize: '0.8rem', width: '100%', textOverflow: 'ellipsis' }}
                         value={selectedHospitalId}
                         onChange={e => setSelectedHospitalId(e.target.value)}
                       >
                         <option value="">Select hospital...</option>
-                        {hospitals.map(hosp => (
-                          <option key={hosp.id} value={hosp.id} disabled={hosp.available_beds === 0 && hosp.id !== selectedRequest.assigned_hospital_id}>
-                            {hosp.name} (Beds: {hosp.available_beds})
-                          </option>
-                        ))}
+                        {hospitals.map(hosp => {
+                          const dist = selectedRequest 
+                            ? getDistance(selectedRequest.latitude, selectedRequest.longitude, hosp.latitude, hosp.longitude)
+                            : null;
+                          const distText = dist !== null ? ` | ${dist.toFixed(2)} km` : '';
+                          return (
+                            <option key={hosp.id} value={hosp.id} disabled={hosp.available_beds === 0 && hosp.id !== selectedRequest.assigned_hospital_id}>
+                              {hosp.name} (Beds: {hosp.available_beds}{distText})
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   </div>

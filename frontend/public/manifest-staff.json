@@ -1,0 +1,23 @@
+{
+  "short_name": "GASP STAFF",
+  "name": "GASP STAFF",
+  "icons": [
+    {
+      "src": "/icons/staff-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/staff-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/#/login",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "display": "standalone",
+  "orientation": "portrait"
+}

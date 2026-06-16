@@ -5,6 +5,16 @@ import MapComponent from '../components/MapComponent';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
+const formatPhoneNumber = (value) => {
+  if (!value) return '';
+  const clean = value.replace(/\D/g, '');
+  const limited = clean.slice(0, 11);
+  if (limited.length > 4) {
+    return `${limited.slice(0, 4)}-${limited.slice(4)}`;
+  }
+  return limited;
+};
+
 const translations = {
   en: {
     serviceName: "GWADAR AMBULANCE",
@@ -34,7 +44,7 @@ const translations = {
     reqNow: "🚨 Request Ambulance",
     placeholderName: "e.g. Abdullah Baloch",
     placeholderPhone: "e.g. 0335-0267742",
-    placeholderLandmark: "e.g. Near GDA Hospital, New Town",
+    placeholderLandmark: "e.g. Near Indus Hospital, New Town",
     finding: "Locating ambulance...",
     locSelected: "Location Selected",
     tapMap: "Tap map to set pin",
@@ -52,6 +62,7 @@ const translations = {
     historyEmpty: "No history found.",
     detectGps: "🎯 Detect My Location",
     gpsDetecting: "Locating...",
+    gpsVerified: "GPS Verified",
     presetLocations: "Quick Landmarks:",
     etaLabel: "Estimated Arrival",
     distLabel: "Distance",
@@ -110,6 +121,7 @@ const translations = {
     historyEmpty: "کوئی ہسٹری نہیں ملی",
     detectGps: "🎯 اپنی لوکیشن معلوم کریں",
     gpsDetecting: "لوکیشن معلوم کی جا رہی ہے...",
+    gpsVerified: "جی پی ایس تصدیق شدہ",
     presetLocations: "مشہور جگہیں:",
     etaLabel: "پہنچنے کا وقت",
     distLabel: "فاصلہ",
@@ -154,8 +166,8 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   const [gpsCoords, setGpsCoords] = useState(null);
 
   // Booking Form State
-  const [name, setName] = useState(currentUser?.name || '');
-  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState(formatPhoneNumber(currentUser?.phone || ''));
   const [emergencyType, setEmergencyType] = useState('Accident');
   const [locationName, setLocationName] = useState('New Town, Gwadar');
   const [userPin, setUserPin] = useState({ latitude: 25.1219, longitude: 62.3254 }); // Centered around Gwadar
@@ -166,6 +178,16 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   const [activeRequest, setActiveRequest] = useState(null);
   const [assignedAmbulance, setAssignedAmbulance] = useState(null);
   const [socket, setSocket] = useState(null);
+
+  // Sync assignedAmbulance if activeRequest or ambulances change
+  useEffect(() => {
+    if (activeRequest?.assigned_ambulance_id && ambulances.length > 0) {
+      const amb = ambulances.find(a => a.id === activeRequest.assigned_ambulance_id);
+      setAssignedAmbulance(amb || null);
+    } else {
+      setAssignedAmbulance(null);
+    }
+  }, [activeRequest?.assigned_ambulance_id, ambulances]);
 
   // Ref to always have the latest activeRequest state inside callbacks
   const activeRequestRef = useRef(activeRequest);
@@ -195,10 +217,26 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
         setLocationName(lang === 'en' ? "Live GPS Location" : "لائیو جی پی ایس لوکیشن");
       },
       (err) => {
-        console.error("GPS detection error:", err);
-        setGpsStatus('denied');
+        console.warn("GPS high accuracy failed, retrying with low accuracy...", err);
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const coords = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            setGpsCoords(coords);
+            setUserPin(coords);
+            setGpsStatus('detected');
+            setLocationName(lang === 'en' ? "Live GPS Location" : "لائیو جی پی ایس لوکیشن");
+          },
+          (err2) => {
+            console.error("GPS detection failed completely:", err2);
+            setGpsStatus('denied');
+          },
+          { enableHighAccuracy: false, timeout: 10000 }
+        );
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 3000 }
     );
   };
 
@@ -213,30 +251,44 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     }
 
     console.log("Starting continuous GPS watch for active dispatch...");
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log("Citizen moved. Streaming coordinates:", latitude, longitude);
-        fetch(`${BACKEND_URL}/api/requests/${activeRequest.id}/location`, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ latitude, longitude })
-        })
-        .then(res => {
-          if (!res.ok) console.error("Failed to stream GPS coordinates");
-        })
-        .catch(err => console.error("GPS streaming error:", err));
-      },
-      (err) => console.error("watchPosition error:", err),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
+    let activeWatchId;
+
+    const startWatch = (highAccuracy) => {
+      activeWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          console.log("Citizen moved. Streaming coordinates:", latitude, longitude);
+          fetch(`${BACKEND_URL}/api/requests/${activeRequest.id}/location`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ latitude, longitude })
+          })
+          .then(res => {
+            if (!res.ok) console.error("Failed to stream GPS coordinates");
+          })
+          .catch(err => console.error("GPS streaming error:", err));
+        },
+        (err) => {
+          console.warn("watchPosition error, retrying with low accuracy...", err);
+          if (highAccuracy) {
+            navigator.geolocation.clearWatch(activeWatchId);
+            startWatch(false);
+          }
+        },
+        { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 3000 : 10000, maximumAge: 0 }
+      );
+    };
+
+    startWatch(true);
 
     return () => {
       console.log("Stopping continuous GPS watch...");
-      navigator.geolocation.clearWatch(watchId);
+      if (activeWatchId !== undefined) {
+        navigator.geolocation.clearWatch(activeWatchId);
+      }
     };
   }, [activeRequest?.id, activeRequest?.status, token]);
 
@@ -245,8 +297,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   // Sync profile details if currentUser updates
   useEffect(() => {
     if (currentUser) {
-      setName(currentUser.name);
-      setPhone(currentUser.phone);
+      setPhone(formatPhoneNumber(currentUser.phone || ''));
     }
   }, [currentUser]);
 
@@ -534,8 +585,8 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   const handleReset = () => {
     setActiveRequest(null);
     setAssignedAmbulance(null);
-    setName(currentUser?.name || '');
-    setPhone(currentUser?.phone || '');
+    setName('');
+    setPhone(formatPhoneNumber(currentUser?.phone || ''));
     setLocationName('New Town, Gwadar');
     setUserPin({ latitude: 25.1219, longitude: 62.3254 });
     setChatMessages([]);
@@ -595,7 +646,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
     <div className="view-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       
       {/* Thin Header Bar */}
-      <header className="glass-panel citizen-header" style={{ 
+      <header className="glass-panel" style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
         alignItems: 'center', 
@@ -616,8 +667,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
             boxShadow: '0 3px 6px rgba(239,68,68,0.2)'
           }}>✚</div>
           <div>
-            <h1 style={{ fontWeight: 800, fontSize: '1.1rem', color: 'var(--primary-red)', margin: 0, lineHeight: 1.1 }}>{t.serviceName}</h1>
-            <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', display: 'block', fontWeight: 500 }}>{t.subtitle}</span>
+            <h1 style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--primary-red)', margin: 0 }}>{t.serviceName}</h1>
           </div>
         </div>
 
@@ -638,8 +688,11 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                 fontSize: '0.7rem', 
                 borderRadius: '15px',
                 background: lang === 'en' ? 'white' : 'transparent',
-                color: lang === 'en' ? 'var(--primary-red)' : 'var(--text-secondary)',
-                boxShadow: lang === 'en' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                color: lang === 'en' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: 'none',
+                boxShadow: lang === 'en' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                fontWeight: lang === 'en' ? 'bold' : 'normal',
+                cursor: 'pointer'
               }}
             >
               EN
@@ -676,21 +729,6 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
             <Phone size={12} /> Call 0335-0267742
           </a>
 
-          <a href="#/login" className="btn" style={{
-            padding: '0.35rem 0.75rem',
-            fontSize: '0.75rem',
-            background: '#f1f5f9',
-            color: 'var(--text-primary)',
-            borderRadius: '20px',
-            textDecoration: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-            fontWeight: 'bold',
-            border: '1px solid #cbd5e1'
-          }}>
-            🔒 Staff Login
-          </a>
         </div>
       </header>
 
@@ -737,7 +775,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }} 
                       placeholder={t.placeholderPhone} 
                       value={phone} 
-                      onChange={e => setPhone(e.target.value)} 
+                      onChange={e => setPhone(formatPhoneNumber(e.target.value))} 
                       required 
                     />
                   </div>
@@ -782,13 +820,8 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
                   )}
 
                   {gpsStatus === 'detected' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'center', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid rgba(22, 163, 74, 0.15)', borderRadius: '6px', padding: '0.5rem', color: 'var(--primary-green)', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span>🛰️</span> GPS Location Verified & Secured
-                      </div>
-                      <span style={{ fontSize: '0.7rem', opacity: 0.85, fontFamily: 'monospace' }}>
-                        ({userPin.latitude.toFixed(6)}, {userPin.longitude.toFixed(6)})
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'rgba(22, 163, 74, 0.05)', border: '1px solid rgba(22, 163, 74, 0.15)', borderRadius: '6px', padding: '0.5rem', color: 'var(--primary-green)', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                      <span>🛰️</span> {t.gpsVerified}
                     </div>
                   )}
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, Activity, Truck, LogOut, Key, User, UserCheck, AlertCircle, Users, Crown } from 'lucide-react';
+import { io } from 'socket.io-client';
 import CitizenApp from './views/CitizenApp';
 import Dispatcher from './views/Dispatcher';
 import DriverApp from './views/DriverApp';
@@ -60,6 +61,64 @@ export default function App() {
       .then(data => setRequests(Array.isArray(data) ? data : []))
       .catch(() => setRequests([]));
   }, [fetchTrigger, token, currentUser]);
+
+  // Global WebSockets for real-time state sync across all dashboards
+  useEffect(() => {
+    if (!token) return;
+
+    const socket = io(BACKEND_URL);
+
+    socket.on('connect', () => {
+      console.log('Global App socket connected:', socket.id);
+    });
+
+    socket.on('request:new', (newReq) => {
+      setRequests(prev => {
+        if (prev.some(r => r.id === newReq.id)) return prev;
+        return [newReq, ...prev];
+      });
+    });
+
+    socket.on('request:updated', (updatedReq) => {
+      setRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
+    });
+
+    socket.on('ambulance:updated', (updatedAmb) => {
+      setAmbulances(prev => prev.map(a => a.id === updatedAmb.id ? updatedAmb : a));
+    });
+
+    socket.on('hospital:updated', (updatedHosp) => {
+      setHospitals(prev => prev.map(h => h.id === updatedHosp.id ? updatedHosp : h));
+    });
+
+    socket.on('system:reset', () => {
+      triggerFetch();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token]);
+
+  // Dynamic manifest swapping based on current hash
+  useEffect(() => {
+    const updateManifest = () => {
+      const hash = window.location.hash || '#/citizen';
+      const isStaff = ['#/login', '#/driver', '#/dispatcher', '#/chairman'].some(route => hash.startsWith(route));
+      const link = document.querySelector('link[rel="manifest"]');
+      if (link) {
+        const target = isStaff ? '/manifest-staff.json' : '/manifest-citizen.json';
+        if (link.getAttribute('href') !== target) {
+          link.setAttribute('href', target);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', updateManifest);
+    updateManifest(); // Run once initially
+
+    return () => window.removeEventListener('hashchange', updateManifest);
+  }, [currentHash]);
 
   // 3. Staff Login (Chairman / Driver / Dispatcher)
   const handleStaffLogin = async (e) => {
@@ -388,12 +447,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Simple Link to Staff Portal */}
-          <div style={{ marginTop: '2rem' }}>
-            <a href="#/login" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', textDecoration: 'none', fontWeight: 600 }}>
-              🔒 Staff Secure Portal
-            </a>
-          </div>
         </div>
         <InstallPrompt />
       </div>
@@ -569,25 +622,6 @@ export default function App() {
           </form>
 
 
-          {/* Separation: Link back to Citizen portal */}
-          <div style={{ textAlign: 'center', marginTop: '1.75rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '1.25rem' }}>
-            <a 
-              href="#/citizen" 
-              target="gasg_citizen_portal"
-              style={{
-                color: '#fca5a5',
-                fontSize: '0.82rem',
-                fontWeight: 700,
-                textDecoration: 'none',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.4rem',
-                cursor: 'pointer'
-              }}
-            >
-              🚑 Go to Public Citizen Portal
-            </a>
-          </div>
 
         </div>
       </div>

@@ -1,9 +1,12 @@
-const CACHE_NAME = 'gasg-v1';
+const CACHE_NAME = 'gasg-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/favicon.svg',
-  '/manifest.json'
+  '/manifest-citizen.json',
+  '/manifest-staff.json',
+  '/icons/staff-192.png',
+  '/icons/staff-512.png'
 ];
 
 self.addEventListener('install', (e) => {

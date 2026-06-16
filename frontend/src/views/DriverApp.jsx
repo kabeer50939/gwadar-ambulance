@@ -39,13 +39,18 @@ function generateRoutePoints(startLat, startLng, endLat, endLng, steps = 40) {
 }
 
 export default function DriverApp({ token, currentUser, ambulances, hospitals, requests, triggerFetch }) {
-  const [selectedAmbulanceId, setSelectedAmbulanceId] = useState('');
+  const [selectedAmbulanceId, setSelectedAmbulanceId] = useState(currentUser?.ambulance_id || '');
+  const [isTestSimulating, setIsTestSimulating] = useState(false);
+  const testSimIntervalRef = useRef(null);
+  const testSimAngleRef = useRef(0);
+  const lastCoordsRef = useRef({ lat: 0, lng: 0, status: '' });
   const [isOnline, setIsOnline] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const [socket, setSocket] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationStatus, setSimulationStatus] = useState('');
   const [vitalsExpanded, setVitalsExpanded] = useState(true);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Patient Vitals Form State (ePCR telemetry)
   const [heartRate, setHeartRate] = useState(80);
@@ -68,6 +73,11 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     a.id === selectedAmbulanceId || 
     (a.vehicle_number && selectedAmbulanceId && a.vehicle_number.trim().toLowerCase() === selectedAmbulanceId.trim().toLowerCase())
   );
+
+  const currentAmbulanceRef = useRef(currentAmbulance);
+  useEffect(() => {
+    currentAmbulanceRef.current = currentAmbulance;
+  }, [currentAmbulance]);
 
   // Web Audio Synthesizer for Ambulance Siren Sound (soft 0.02 gain)
   const startSirenSynthesizer = () => {
@@ -164,23 +174,19 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
   // Synchronize active job if request list updates
   useEffect(() => {
-    if (requests.length > 0) {
-      const job = requests.find(
-        r => r.assigned_driver_id === currentUser.id && 
-        r.status !== 'Completed' && 
-        r.status !== 'Completed - Awaiting Verification'
-      );
-      setActiveJob(job || null);
-      if (job && job.assigned_ambulance_id) {
-        setSelectedAmbulanceId(job.assigned_ambulance_id);
-      } else {
-        setSelectedAmbulanceId('');
-      }
+    const job = requests.find(
+      r => r.assigned_driver_id === currentUser.id && 
+      r.status !== 'Completed'
+    );
+    setActiveJob(job || null);
+    if (job && job.assigned_ambulance_id) {
+      setSelectedAmbulanceId(job.assigned_ambulance_id);
+    } else if (isOnline) {
+      setSelectedAmbulanceId(currentUser.ambulance_id || '');
     } else {
-      setActiveJob(null);
       setSelectedAmbulanceId('');
     }
-  }, [requests, currentUser.id]);
+  }, [requests, currentUser.id, currentUser.ambulance_id, isOnline]);
 
   // Auto-Telemetry generation loop
   useEffect(() => {
@@ -221,6 +227,96 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     };
   }, [isAutoTelemetry, activeJob?.id, activeJob?.status]);
 
+  // Continuous driver GPS watch when driver is online
+  useEffect(() => {
+    if (!isOnline || !selectedAmbulanceId) {
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      console.warn("Geolocation not supported for driver tracking");
+      return;
+    }
+
+    console.log("Starting continuous GPS watch for driver...");
+    let activeWatchId;
+
+    const startWatch = (highAccuracy) => {
+      activeWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          // If simulation or test simulator is running, ignore real GPS updates to avoid overriding it
+          if (isSimulating || isTestSimulating) return;
+
+          const { latitude, longitude } = position.coords;
+          const status = activeJob?.status || 'Available';
+          
+          const latDiff = Math.abs(latitude - lastCoordsRef.current.lat);
+          const lngDiff = Math.abs(longitude - lastCoordsRef.current.lng);
+          const statusChanged = status !== lastCoordsRef.current.status;
+
+          // Only stream to server if coordinates changed by a minimal threshold or status changed
+          if (latDiff > 0.00002 || lngDiff > 0.00002 || statusChanged) {
+            lastCoordsRef.current = { lat: latitude, lng: longitude, status };
+            console.log("Driver moved. Streaming coordinates:", latitude, longitude);
+            updateServerLocation(latitude, longitude, undefined, status);
+          }
+        },
+        (err) => {
+          console.warn("Driver watchPosition error, retrying with low accuracy...", err);
+          if (highAccuracy) {
+            navigator.geolocation.clearWatch(activeWatchId);
+            startWatch(false);
+          }
+        },
+        { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 3000 : 10000, maximumAge: 0 }
+      );
+    };
+
+    startWatch(true);
+
+    return () => {
+      console.log("Stopping driver GPS watch...");
+      if (activeWatchId !== undefined) {
+        navigator.geolocation.clearWatch(activeWatchId);
+      }
+    };
+  }, [isOnline, selectedAmbulanceId, activeJob?.status, isSimulating, isTestSimulating]);
+
+  // Continuous test movement simulator loop
+  useEffect(() => {
+    if (isTestSimulating && isOnline && selectedAmbulanceId) {
+      console.log("Starting test movement simulation...");
+      
+      const baseLat = currentAmbulance?.latitude || 25.1219;
+      const baseLng = currentAmbulance?.longitude || 62.3254;
+      
+      testSimIntervalRef.current = setInterval(() => {
+        testSimAngleRef.current += 0.15; // Increments angle in radians
+        
+        // Circular path of radius ~200 meters (0.002 degrees)
+        const lat = baseLat + Math.sin(testSimAngleRef.current) * 0.002;
+        const lng = baseLng + Math.cos(testSimAngleRef.current) * 0.002;
+        const bearing = (testSimAngleRef.current * 180 / Math.PI) % 360;
+        const status = activeJob?.status || 'Available';
+        
+        console.log("Test simulator updated position:", lat, lng);
+        updateServerLocation(lat, lng, bearing, status);
+      }, 3000);
+    } else {
+      if (testSimIntervalRef.current) {
+        clearInterval(testSimIntervalRef.current);
+        testSimIntervalRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (testSimIntervalRef.current) {
+        clearInterval(testSimIntervalRef.current);
+        testSimIntervalRef.current = null;
+      }
+    };
+  }, [isTestSimulating, isOnline, selectedAmbulanceId, activeJob?.status, currentAmbulance?.id]);
+
   // WebSockets setup
   useEffect(() => {
     if (!isOnline) {
@@ -238,13 +334,14 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
     newSocket.on('connect', () => {
       console.log(`Driver socket connected for driver ${currentUser.id}:`, newSocket.id);
-      if (selectedAmbulanceId && currentAmbulance) {
+      const latestAmb = currentAmbulanceRef.current;
+      if (selectedAmbulanceId && latestAmb) {
         newSocket.emit('driver:location-update', {
           ambulanceId: selectedAmbulanceId,
           driverId: currentUser.id,
-          latitude: currentAmbulance.latitude,
-          longitude: currentAmbulance.longitude,
-          bearing: currentAmbulance.bearing,
+          latitude: latestAmb.latitude,
+          longitude: latestAmb.longitude,
+          bearing: latestAmb.bearing,
           status: 'Available',
           siren: sirenActive
         });
@@ -271,7 +368,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       setActiveJob(prevJob => {
         if (prevJob && prevJob.id === updatedReq.id) {
           const stillAssigned = updatedReq.assigned_driver_id === currentUser.id;
-          if (stillAssigned && updatedReq.status !== 'Completed' && updatedReq.status !== 'Completed - Awaiting Verification') {
+          if (stillAssigned && updatedReq.status !== 'Completed') {
             if (updatedReq.assigned_ambulance_id) {
               setSelectedAmbulanceId(updatedReq.assigned_ambulance_id);
             }
@@ -281,7 +378,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
           }
         } else {
           const assignedToUs = updatedReq.assigned_driver_id === currentUser.id;
-          if (assignedToUs && updatedReq.status !== 'Completed' && updatedReq.status !== 'Completed - Awaiting Verification') {
+          if (assignedToUs && updatedReq.status !== 'Completed') {
             if (updatedReq.assigned_ambulance_id) {
               setSelectedAmbulanceId(updatedReq.assigned_ambulance_id);
             }
@@ -306,7 +403,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       if (simIntervalRef.current) clearInterval(simIntervalRef.current);
       stopSirenSynthesizer();
     };
-  }, [selectedAmbulanceId, isOnline, currentAmbulance]);
+  }, [selectedAmbulanceId, isOnline]);
 
   const handleToggleDuty = () => {
     if (isOnline) {
@@ -324,17 +421,19 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       setIsOnline(false);
       setActiveJob(null);
       setSelectedAmbulanceId('');
+      setIsTestSimulating(false);
       stopSirenSynthesizer();
       setSirenActive(false);
       setIsAutoTelemetry(false);
     } else {
       setIsOnline(true);
+      setSelectedAmbulanceId(currentUser.ambulance_id || '');
     }
     triggerFetch();
   };
 
-  const updateServerLocation = (lat, lng, bearing, status) => {
-    if (socket && isOnline) {
+  function updateServerLocation(lat, lng, bearing, status) {
+    if (socket) {
       socket.emit('driver:location-update', {
         ambulanceId: selectedAmbulanceId,
         driverId: currentUser.id,
@@ -345,7 +444,7 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
         siren: sirenActive
       });
     }
-  };
+  }
 
   const updateJobStatus = async (status) => {
     if (!activeJob) return;
@@ -431,21 +530,16 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       const bearing = calculateBearing(currentPt.lat, currentPt.lng, nextPt.lat, nextPt.lng);
 
       // Generate dynamic Turn-by-Turn Instruction based on steps
-      let hudMsg = "";
-      if (currentStep < midStep - 3) {
-        hudMsg = targetStatus === 'Reached Patient' 
-          ? "Head North on Airport Link Road towards patient..."
-          : "Proceed North towards emergency hospital intake...";
-      } else if (currentStep >= midStep - 3 && currentStep <= midStep + 2) {
-        hudMsg = "Turn right onto Gwadar Harbour Expressway...";
-      } else if (currentStep > midStep + 2 && currentStep < steps - 3) {
-        hudMsg = "Drive straight towards destination gate...";
-      } else {
-        hudMsg = "Approaching destination. Slowing down...";
-      }
+      const hudMsg = currentStep < midStep - 3
+        ? (targetStatus === 'Reached Patient' ? "Head North on Airport Link Road towards patient..." : "Proceed North towards emergency hospital intake...")
+        : (currentStep >= midStep - 3 && currentStep <= midStep + 2)
+          ? "Turn right onto Gwadar Harbour Expressway..."
+          : (currentStep > midStep + 2 && currentStep < steps - 3)
+            ? "Drive straight towards destination gate..."
+            : "Approaching destination. Slowing down...";
 
       setSimulationStatus(hudMsg);
-      updateServerLocation(currentPt.lat, currentPt.lng, bearing, currentAmbulance.status);
+      updateServerLocation(currentPt.lat, currentPt.lng, bearing, targetStatus);
       currentStep++;
     }, intervalMs);
   };
@@ -482,12 +576,14 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     }
   ];
 
-  const handleProgressStatus = () => {
-    if (!activeJob) return;
+  const handleProgressStatus = async () => {
+    if (!activeJob || isUpdatingStatus) return;
     const step = STATUS_STEPS.find(s => s.from === activeJob.status);
     if (!step) return;
 
-    updateJobStatus(step.to);
+    setIsUpdatingStatus(true);
+    await updateJobStatus(step.to);
+    setIsUpdatingStatus(false);
 
     // Trigger GPS simulation in parallel when starting to drive
     if (step.to === 'En Route') {
@@ -606,6 +702,88 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
               </div>
             </div>
 
+            {/* GPS Tracking Status Panel */}
+            {isOnline && selectedAmbulanceId && (
+              <div className="glass-panel" style={{ padding: '1rem', borderRadius: '16px', background: 'white', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '4px solid var(--primary-blue)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ 
+                    fontSize: '0.88rem', 
+                    fontWeight: 700, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '0.4rem', 
+                    color: 'var(--primary-blue)',
+                    margin: 0
+                  }}>
+                    <Navigation size={16} /> GPS Tracking
+                  </h3>
+                  {isSimulating || isTestSimulating ? (
+                    <span className="badge badge-blue pulse-icon" style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-blue)', display: 'inline-block' }}></span>
+                      Simulating
+                    </span>
+                  ) : (
+                    <span className="badge badge-green pulse-icon" style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-green)', display: 'inline-block' }}></span>
+                      Live GPS
+                    </span>
+                  )}
+                </div>
+
+                {/* Coordinates display */}
+                <div style={{ 
+                  background: '#f8fafc', 
+                  padding: '0.6rem 0.8rem', 
+                  borderRadius: '10px', 
+                  border: '1px solid var(--border-color)',
+                  fontSize: '0.78rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Latitude:</span>
+                    <strong style={{ fontFamily: 'monospace' }}>
+                      {currentAmbulance?.latitude ? currentAmbulance.latitude.toFixed(6) : '—'}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Longitude:</span>
+                    <strong style={{ fontFamily: 'monospace' }}>
+                      {currentAmbulance?.longitude ? currentAmbulance.longitude.toFixed(6) : '—'}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '0.25rem', marginTop: '0.25rem', fontSize: '0.72rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Vehicle:</span>
+                    <strong>{currentAmbulance?.vehicle_number || '—'}</strong>
+                  </div>
+                </div>
+
+                {/* Test Simulator Toggle Switch */}
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'space-between', 
+                  padding: '0.5rem 0.6rem', 
+                  borderRadius: '8px', 
+                  background: isTestSimulating ? 'rgba(59, 130, 246, 0.05)' : '#f8fafc', 
+                  border: '1px solid var(--border-color)',
+                  fontSize: '0.75rem'
+                }}>
+                  <span style={{ fontWeight: 700, color: isTestSimulating ? 'var(--primary-blue)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    {isTestSimulating ? '🛰️ Test Patrol Active' : '⚙️ Test Patrol Simulator'}
+                  </span>
+                  <input 
+                    type="checkbox" 
+                    checked={isTestSimulating} 
+                    disabled={isSimulating}
+                    onChange={e => setIsTestSimulating(e.target.checked)} 
+                    style={{ width: '16px', height: '16px', cursor: isSimulating ? 'not-allowed' : 'pointer' }}
+                  />
+                </div>
+              </div>
+            )}
+
           {/* Active Dispatch details */}
           {isOnline && activeJob ? (
             <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '16px', background: 'white', borderLeft: '4px solid var(--primary-orange)' }}>
@@ -669,12 +847,14 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
                 {STATUS_STEPS.find(s => s.from === activeJob.status) ? (
                   <button
                     onClick={handleProgressStatus}
-                    disabled={isSimulating}
+                    disabled={isSimulating || isUpdatingStatus}
                     className={`btn ${STATUS_STEPS.find(s => s.from === activeJob.status)?.color || 'btn-primary'}`}
                     style={{ width: '100%', fontSize: '0.88rem', padding: '0.75rem', borderRadius: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', boxShadow: '0 4px 14px rgba(0,0,0,0.1)', transition: 'all 0.2s' }}
                   >
                     {isSimulating ? (
                       <><span className="pulse-icon">🛰️</span> GPS Tracking Active...</>
+                    ) : isUpdatingStatus ? (
+                      'Updating Status...'
                     ) : (
                       STATUS_STEPS.find(s => s.from === activeJob.status)?.label
                     )}
@@ -890,10 +1070,11 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
         {/* Right Column: Driver Map view with Floating GPS HUD */}
         <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', height: '100%' }}>
           <MapComponent
-            ambulances={currentAmbulance ? [currentAmbulance] : []}
+            ambulances={ambulances}
             requests={activeJob ? [activeJob] : []}
             hospitals={hospitals}
             selectedRequestId={activeJob?.id}
+            ownAmbulanceId={selectedAmbulanceId}
             showRoutes={true}
           />
           {isSimulating && (
