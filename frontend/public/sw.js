@@ -1,10 +1,15 @@
-const CACHE_NAME = 'gasg-v2';
+const CACHE_NAME = 'gasg-v3';
 const ASSETS = [
   '/',
   '/index.html',
+  '/logo.png',
+  '/logo.jpeg',
   '/favicon.svg',
+  '/icons.svg',
   '/manifest-citizen.json',
   '/manifest-staff.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
   '/icons/staff-192.png',
   '/icons/staff-512.png'
 ];
