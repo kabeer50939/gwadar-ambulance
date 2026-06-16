@@ -4,7 +4,8 @@
   "description": "Backend API and WebSocket Server for Gwadar Ambulance Service System",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "clean-db": "node clean_db.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

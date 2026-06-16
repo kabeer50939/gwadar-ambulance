@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, ShieldCheck, Truck, Users, Navigation, Calendar, Award, Hospital, RefreshCw, UserPlus, Trash2, Eye, EyeOff, CheckCircle, XCircle } from 'lucide-react';
+import { Activity, ShieldCheck, Truck, Users, Navigation, Calendar, Award, Hospital, RefreshCw, UserPlus, Trash2, Eye, EyeOff, CheckCircle, XCircle, Search, Wrench } from 'lucide-react';
+import MapComponent from '../components/MapComponent';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
@@ -41,6 +42,10 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
   const [fleetLoading, setFleetLoading] = useState(false);
   const [fleetError, setFleetError] = useState(null);
   const [fleetSuccess, setFleetSuccess] = useState(null);
+
+  // Search filter states
+  const [staffSearch, setStaffSearch] = useState('');
+  const [fleetSearch, setFleetSearch] = useState('');
 
   // Helper for advanced client-side image compression and center-cropping
   const processImageFile = (file, targetWidth, targetHeight, callback) => {
@@ -314,34 +319,6 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
   return (
     <div className="view-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
 
-      {/* Header */}
-      <div className="glass-panel" style={{
-        padding: '1.25rem 1.5rem', borderRadius: '12px',
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        color: 'white', boxShadow: 'var(--shadow-lg)',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem'
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-            <span style={{ fontSize: '1.4rem' }}>👑</span>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 800, margin: 0, textTransform: 'uppercase', letterSpacing: '-0.5px' }}>
-              Chairman Command Center
-            </h1>
-          </div>
-          <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: 0, fontWeight: 500 }}>
-            GASG · Audit, Analytics & Staff Administration
-          </p>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(255,255,255,0.06)', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
-          <ShieldCheck size={18} style={{ color: '#22c55e' }} />
-          <div style={{ fontSize: '0.75rem' }}>
-            <span style={{ color: '#94a3b8', display: 'block', fontSize: '0.65rem' }}>SECURE ACCESS</span>
-            <span style={{ fontWeight: 'bold' }}>SUPER ADMINISTRATOR</span>
-          </div>
-        </div>
-      </div>
-
       {/* Tab Navigation */}
       <div style={{ display: 'flex', gap: '0.5rem', borderBottom: '2px solid var(--border-color)', paddingBottom: '0' }}>
         {TABS.map(tab => (
@@ -387,6 +364,8 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
               </div>
             ))}
           </div>
+
+
 
           {/* Two-column breakdown */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem', alignItems: 'stretch' }}>
@@ -584,6 +563,55 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
               </div>
             )}
           </div>
+
+          {/* System Maintenance & Database Control */}
+          <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(239,68,68,0.1)' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#b91c1c', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+              <Wrench size={16} /> System Maintenance & Database Controls
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
+                Perform administrative system actions. Wiping request logs clears out active case files and resets ambulance availability, returning the database to a clean starting state.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  style={{
+                    padding: '0.55rem 1rem',
+                    fontSize: '0.8rem',
+                    backgroundColor: '#dc2626',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.4rem'
+                  }}
+                  onClick={async () => {
+                    if (window.confirm("Are you sure you want to reset the system database? This deletes all logged requests, emergency chats, and resets ambulances to Available.")) {
+                      try {
+                        const res = await fetch(`${BACKEND_URL}/api/reset`, {
+                          method: 'POST',
+                          headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (res.ok) {
+                          alert("Database reset successfully!");
+                          triggerFetch();
+                        } else {
+                          const data = await res.json();
+                          alert("Failed to reset database: " + (data.error || res.statusText));
+                        }
+                      } catch (err) {
+                        console.error("Failed to reset system", err);
+                        alert("Error contacting the server.");
+                      }
+                    }
+                  }}
+                >
+                  ⚙️ Reset System Data
+                </button>
+              </div>
+            </div>
+          </div>
         </>
       )}
 
@@ -722,16 +750,51 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
 
           {/* Staff Table */}
           <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
-              <Users size={16} style={{ color: 'var(--primary-blue)' }} /> Staff Roster
-              <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 400 }}>{staff.length} accounts</span>
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                <Users size={16} style={{ color: 'var(--primary-blue)' }} /> Staff Roster
+                <span style={{ marginLeft: '0.25rem', color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 400 }}>({staff.length} accounts)</span>
+              </h3>
+              
+              {/* Search Bar */}
+              <div style={{ position: 'relative', minWidth: '240px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search by name, CNIC, or username..."
+                  value={staffSearch}
+                  onChange={e => setStaffSearch(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.5rem 0.4rem 2rem',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    width: '100%',
+                    margin: 0,
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
 
             {staffLoading && staff.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Loading staff...</div>
             ) : staff.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                 No staff accounts found. Click "Create Account" to add drivers or dispatchers.
+              </div>
+            ) : staff.filter(s => {
+              const query = staffSearch.toLowerCase().trim();
+              if (!query) return true;
+              return (
+                (s.name && s.name.toLowerCase().includes(query)) ||
+                (s.username && s.username.toLowerCase().includes(query)) ||
+                (s.cnic && s.cnic.toLowerCase().includes(query)) ||
+                (s.phone && s.phone.toLowerCase().includes(query))
+              );
+            }).length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                No staff members match your search criteria.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -751,8 +814,19 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                     </tr>
                   </thead>
                   <tbody>
-                    {staff.map(s => {
-                      const amb = s.ambulance_id ? ambulances.find(a => a.id === s.ambulance_id) : null;
+                    {staff
+                      .filter(s => {
+                        const query = staffSearch.toLowerCase().trim();
+                        if (!query) return true;
+                        return (
+                          (s.name && s.name.toLowerCase().includes(query)) ||
+                          (s.username && s.username.toLowerCase().includes(query)) ||
+                          (s.cnic && s.cnic.toLowerCase().includes(query)) ||
+                          (s.phone && s.phone.toLowerCase().includes(query))
+                        );
+                      })
+                      .map(s => {
+                        const amb = s.ambulance_id ? ambulances.find(a => a.id === s.ambulance_id) : null;
                       return (
                         <tr key={s.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.03)', verticalAlign: 'middle' }}>
                           <td style={{ padding: '0.6rem' }}>
@@ -954,14 +1028,48 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
 
           {/* Fleet Table */}
           <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
-              <Truck size={16} style={{ color: 'var(--primary-blue)' }} /> Ambulance Roster
-              <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 400 }}>{ambulances.length} vehicles</span>
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                <Truck size={16} style={{ color: 'var(--primary-blue)' }} /> Ambulance Roster
+                <span style={{ marginLeft: '0.25rem', color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 400 }}>({ambulances.length} vehicles)</span>
+              </h3>
+
+              {/* Search Bar */}
+              <div style={{ position: 'relative', minWidth: '240px' }}>
+                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search by plate, model, driver..."
+                  value={fleetSearch}
+                  onChange={e => setFleetSearch(e.target.value)}
+                  style={{
+                    padding: '0.4rem 0.5rem 0.4rem 2rem',
+                    fontSize: '0.78rem',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    width: '100%',
+                    margin: 0,
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
 
             {ambulances.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
                 No ambulances registered. Click "Register Ambulance" to add one.
+              </div>
+            ) : ambulances.filter(a => {
+              const query = fleetSearch.toLowerCase().trim();
+              if (!query) return true;
+              return (
+                (a.vehicle_number && a.vehicle_number.toLowerCase().includes(query)) ||
+                (a.model && a.model.toLowerCase().includes(query)) ||
+                (a.driver_name && a.driver_name.toLowerCase().includes(query))
+              );
+            }).length === 0 ? (
+              <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                No ambulances match your search criteria.
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -979,7 +1087,17 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
                     </tr>
                   </thead>
                   <tbody>
-                    {ambulances.map(a => (
+                    {ambulances
+                      .filter(a => {
+                        const query = fleetSearch.toLowerCase().trim();
+                        if (!query) return true;
+                        return (
+                          (a.vehicle_number && a.vehicle_number.toLowerCase().includes(query)) ||
+                          (a.model && a.model.toLowerCase().includes(query)) ||
+                          (a.driver_name && a.driver_name.toLowerCase().includes(query))
+                        );
+                      })
+                      .map(a => (
                       <tr key={a.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.03)', verticalAlign: 'middle' }}>
                         <td style={{ padding: '0.6rem' }}>
                           {a.photo ? (

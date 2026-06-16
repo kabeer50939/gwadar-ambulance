@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Activity, Truck, LogOut, Key, User, UserCheck, AlertCircle, Users, Crown } from 'lucide-react';
+import { ShieldAlert, Activity, Truck, LogOut, Key, User, UserCheck, AlertCircle, Users, Crown, HeartPulse, Phone } from 'lucide-react';
 import { io } from 'socket.io-client';
 import CitizenApp from './views/CitizenApp';
 import Dispatcher from './views/Dispatcher';
 import DriverApp from './views/DriverApp';
 import ChairmanDashboard from './views/ChairmanDashboard';
 import InstallPrompt from './components/InstallPrompt';
+import MapComponent from './components/MapComponent';
+import brandLogo from './assets/logo.png';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
 
@@ -36,6 +38,9 @@ export default function App() {
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [lang, setLang] = useState('en');
 
   const triggerFetch = () => setFetchTrigger(prev => prev + 1);
 
@@ -252,48 +257,293 @@ export default function App() {
     const isCitizen = currentUser.role === 'citizen';
     return (
       <div>
-        {!isCitizen && (
-          <header className="app-header glass-panel">
-            <div className="app-logo">
-              <ShieldAlert className="app-logo-icon" size={24} />
-              <span>GWADAR AMBULANCE</span>
-            </div>
+        <header 
+          className="app-header"
+          style={{
+            background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+            color: 'white',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
+            boxShadow: 'var(--shadow-lg)',
+            position: 'relative',
+            height: '75px',
+            backdropFilter: 'none',
+            WebkitBackdropFilter: 'none',
+            paddingLeft: '1.25rem',
+            paddingRight: '1.25rem'
+          }}
+        >
+          <div 
+            className="app-logo"
+            style={{
+              background: 'none',
+              WebkitTextFillColor: 'initial',
+              color: 'white',
+              fontSize: '1.25rem',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              marginLeft: '-0.75rem'
+            }}
+          >
+            {currentUser.role !== 'citizen' ? (
+              <>
+                <img src={brandLogo} alt="GASG Logo" style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', background: 'white', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', display: 'block' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ 
+                    fontSize: '1.55rem', 
+                    fontWeight: 900, 
+                    fontStyle: 'italic', 
+                    fontFamily: '"Montserrat", "Outfit", "Inter", sans-serif', 
+                    letterSpacing: '1.5px',
+                    textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    display: 'inline-block'
+                  }}>
+                    GWADAR AMBULANCE
+                  </span>
+                  <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.3)' }} />
+                  <span style={{ 
+                    fontSize: '0.68rem', 
+                    fontWeight: 700, 
+                    letterSpacing: '2px', 
+                    color: 'rgba(255, 255, 255, 0.85)', 
+                    textTransform: 'uppercase',
+                    fontFamily: '"Inter", sans-serif'
+                  }}>
+                    {currentUser.role === 'chairman' ? 'CHAIRMAN PORTAL' : currentUser.role === 'dispatcher' ? 'DISPATCH PORTAL' : 'DRIVER PORTAL'}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <img src={brandLogo} alt="GASG Logo" style={{ width: '54px', height: '54px', borderRadius: '50%', objectFit: 'cover', background: 'white', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)', display: 'block' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ 
+                    fontSize: '1.55rem', 
+                    fontWeight: 900, 
+                    fontStyle: 'italic', 
+                    fontFamily: '"Montserrat", "Outfit", "Inter", sans-serif', 
+                    letterSpacing: '1.5px',
+                    textShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                    display: 'inline-block'
+                  }}>
+                    GWADAR AMBULANCE
+                  </span>
+                  <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.3)' }} />
+                  <span style={{ 
+                    fontSize: '0.68rem', 
+                    fontWeight: 700, 
+                    letterSpacing: '2px', 
+                    color: 'rgba(255, 255, 255, 0.85)', 
+                    textTransform: 'uppercase',
+                    fontFamily: '"Inter", sans-serif'
+                  }}>
+                    {lang === 'ur' ? 'شہری پورٹل' : 'CITIZEN PORTAL'}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
 
-            <div className="header-controls" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', fontSize: '0.8rem' }}>
-                <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
-                  {currentUser.username ? `@${currentUser.username}` : currentUser.name}
-                </span>
-                <span className={`badge ${
-                  currentUser.role === 'dispatcher' ? 'badge-red' :
-                  currentUser.role === 'driver' ? 'badge-orange' :
-                  currentUser.role === 'chairman' ? 'badge-green' : 'badge-blue'
-                }`} style={{ fontSize: '0.65rem', padding: '0.1rem 0.5rem', marginTop: '0.1rem' }}>
-                  {currentUser.role === 'citizen' ? '👤 CITIZEN' :
-                   currentUser.role === 'driver' ? '🚑 DRIVER' :
-                   currentUser.role === 'dispatcher' ? '📡 DISPATCHER' : '👑 CHAIRMAN'}
-                </span>
+          <div className="header-controls" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {currentUser.role === 'citizen' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                {/* Language switcher */}
+                <div style={{ display: 'flex', gap: '0.2rem', background: 'rgba(255,255,255,0.1)', padding: '0.2rem', borderRadius: '20px' }}>
+                  <button 
+                    onClick={() => setLang('en')} 
+                    className="btn" 
+                    style={{ 
+                      padding: '0.25rem 0.6rem', 
+                      fontSize: '0.7rem', 
+                      borderRadius: '15px',
+                      background: lang === 'en' ? 'white' : 'transparent',
+                      color: lang === 'en' ? 'var(--text-primary)' : 'white',
+                      border: 'none',
+                      boxShadow: lang === 'en' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      fontWeight: lang === 'en' ? 'bold' : 'normal',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    EN
+                  </button>
+                  <button 
+                    onClick={() => setLang('ur')} 
+                    className="btn"
+                    style={{ 
+                      padding: '0.25rem 0.6rem', 
+                      fontSize: '0.7rem', 
+                      borderRadius: '15px',
+                      background: lang === 'ur' ? 'white' : 'transparent',
+                      color: lang === 'ur' ? 'var(--primary-red)' : 'white',
+                      border: 'none',
+                      boxShadow: lang === 'ur' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      fontWeight: lang === 'ur' ? 'bold' : 'normal',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    اردو
+                  </button>
+                </div>
+
+                {/* Hotline */}
+                <a 
+                  href="tel:03350267742" 
+                  title={lang === 'ur' ? 'کال کریں: 03350267742' : 'Call 0335-0267742'}
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '50%',
+                    background: '#ffffff',
+                    border: '1px solid #ffffff',
+                    color: '#0284c7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                    transition: 'background 0.2s, transform 0.2s',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                  }}
+                  onMouseOver={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.transform = 'scale(1.05)' }}
+                  onMouseOut={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.transform = 'scale(1)' }}
+                >
+                  <Phone size={18} />
+                </a>
               </div>
+            )}
 
-              <a 
-                href="#/citizen" 
-                target="gasg_citizen_portal"
-                className="btn btn-secondary"
-                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center', textDecoration: 'none' }}
-              >
-                🚑 Citizen Portal
-              </a>
+            <button
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '50%',
+                background: '#ffffff',
+                border: '1px solid #ffffff',
+                color: '#0284c7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+                fontSize: '1rem',
+                outline: 'none',
+                transition: 'background 0.2s, transform 0.2s',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+              }}
+              onMouseOver={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.transform = 'scale(1.05)' }}
+              onMouseOut={e => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.transform = 'scale(1)' }}
+            >
+              {currentUser.name ? currentUser.name.slice(0, 1).toUpperCase() : 'U'}
+            </button>
 
-              <button
-                onClick={handleLogout}
-                className="btn btn-secondary"
-                style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', gap: '0.35rem', alignItems: 'center' }}
-              >
-                <LogOut size={14} /> Logout
-              </button>
-            </div>
-          </header>
-        )}
+            {showUserMenu && (
+              <div style={{
+                position: 'absolute',
+                top: '50px',
+                right: 0,
+                background: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '8px',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                padding: '0.5rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.4rem',
+                minWidth: '180px',
+                zIndex: 9999
+              }}>
+                {/* Dropdown Header: Name & Role */}
+                <div style={{ padding: '0.45rem 0.65rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.25rem', fontSize: '0.75rem', display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontWeight: 'bold', color: 'white' }}>{currentUser.name}</span>
+                  <span style={{ 
+                    fontSize: '0.62rem', 
+                    fontWeight: 800,
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.5px', 
+                    color: currentUser.role === 'chairman' ? '#fbbf24' : currentUser.role === 'dispatcher' ? '#fca5a5' : currentUser.role === 'driver' ? '#fdba74' : '#93c5fd',
+                    marginTop: '2px' 
+                  }}>
+                    {currentUser.role === 'chairman' ? '👑 CHAIRMAN' : currentUser.role === 'dispatcher' ? '📡 DISPATCHER' : currentUser.role === 'driver' ? '🚑 DRIVER' : `👤 ${lang === 'ur' ? 'شہری' : 'CITIZEN'}`}
+                  </span>
+                </div>
+
+                {(currentUser.role === 'chairman' || currentUser.role === 'dispatcher') && (
+                  <button
+                    onClick={() => {
+                      setShowMapModal(true);
+                      setShowUserMenu(false);
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      gap: '0.35rem',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      background: 'rgba(59,130,246,0.15)',
+                      color: '#93c5fd',
+                      border: '1px solid rgba(59,130,246,0.3)',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🗺️ Live GPS Map
+                  </button>
+                )}
+
+                {currentUser.role !== 'citizen' && (
+                  <a 
+                    href="#/citizen" 
+                    target="gasg_citizen_portal"
+                    className="btn btn-secondary"
+                    onClick={() => setShowUserMenu(false)}
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      gap: '0.35rem',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      textDecoration: 'none',
+                      background: 'rgba(255,255,255,0.08)',
+                      color: 'white',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🚑 Citizen Portal
+                  </a>
+                )}
+
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setShowUserMenu(false);
+                  }}
+                  className="btn btn-secondary"
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    gap: '0.35rem',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    background: 'rgba(239,68,68,0.1)',
+                    color: '#fca5a5',
+                    border: '1px solid rgba(239,68,68,0.2)',
+                    width: '100%',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <LogOut size={12} /> Logout
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
 
         <main>
           {currentHash === '#/citizen' && currentUser.role === 'citizen' && (
@@ -304,6 +554,8 @@ export default function App() {
               ambulances={ambulances}
               requests={requests}
               onNewRequestCreated={triggerFetch}
+              lang={lang}
+              setLang={setLang}
             />
           )}
 
@@ -344,6 +596,49 @@ export default function App() {
           )}
         </main>
         <InstallPrompt />
+
+        {/* Map Modal */}
+        {showMapModal && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 99999, padding: '1.5rem'
+          }}>
+            <div className="glass-panel" style={{
+              background: 'white', padding: '1.5rem', borderRadius: '16px',
+              width: '100%', maxWidth: '950px', height: '80vh', display: 'flex',
+              flexDirection: 'column', gap: '1rem', boxShadow: 'var(--shadow-2xl)',
+              border: '1px solid var(--border-color)', position: 'relative'
+            }}>
+              <button
+                onClick={() => setShowMapModal(false)}
+                style={{
+                  position: 'absolute', right: '1.25rem', top: '1.25rem',
+                  background: '#f1f5f9', border: 'none', borderRadius: '50%',
+                  width: '32px', height: '32px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem',
+                  transition: 'background 0.2s'
+                }}
+                onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+                onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+              >
+                ✕
+              </button>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🗺️ Gwadar Live GPS Map Overview
+              </h3>
+              <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                <MapComponent
+                  ambulances={ambulances}
+                  requests={requests}
+                  hospitals={hospitals}
+                  showRoutes={true}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -372,13 +667,18 @@ export default function App() {
         <div style={{ textAlign: 'center', position: 'relative', zIndex: 1, maxWidth: '420px', width: '100%' }}>
           <div style={{
             width: '64px', height: '64px',
-            background: 'linear-gradient(135deg, #dc2626, #ef4444)',
-            borderRadius: '18px',
+            background: 'white',
+            borderRadius: '50%',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontSize: '2rem', margin: '0 auto 1.5rem auto',
-            boxShadow: '0 8px 32px rgba(239,68,68,0.4)',
-            animation: 'pulse 2.5s infinite'
-          }}>✚</div>
+            margin: '0 auto 1.5rem auto',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            animation: 'pulse 2.5s infinite',
+            overflow: 'hidden',
+            padding: '4px',
+            border: '1px solid rgba(255, 255, 255, 0.2)'
+          }}>
+            <img src={brandLogo} alt="GASG Logo" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+          </div>
 
           <h1 style={{
             fontWeight: 900, fontSize: '1.8rem',
@@ -478,13 +778,18 @@ export default function App() {
       <div style={{ textAlign: 'center', marginBottom: '2rem', position: 'relative', zIndex: 1 }}>
         <div style={{
           width: '64px', height: '64px',
-          background: 'linear-gradient(135deg, #dc2626, #ef4444)',
-          borderRadius: '18px',
+          background: 'white',
+          borderRadius: '50%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: 'white', fontSize: '2rem', margin: '0 auto 1rem auto',
-          boxShadow: '0 8px 32px rgba(239,68,68,0.4)',
-          animation: 'pulse 2.5s infinite'
-        }}>✚</div>
+          margin: '0 auto 1rem auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          animation: 'pulse 2.5s infinite',
+          overflow: 'hidden',
+          padding: '4px',
+          border: '1px solid rgba(255, 255, 255, 0.2)'
+        }}>
+          <img src={brandLogo} alt="GASG Logo" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+        </div>
         <h1 style={{
           fontWeight: 900, fontSize: '1.9rem',
           color: 'white', textTransform: 'uppercase',

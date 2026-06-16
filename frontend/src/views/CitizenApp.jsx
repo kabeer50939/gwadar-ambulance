@@ -137,8 +137,7 @@ const translations = {
 };;
 
 
-export default function CitizenApp({ token, currentUser, hospitals, ambulances, requests, onNewRequestCreated }) {
-  const [lang, setLang] = useState('en');
+export default function CitizenApp({ token, currentUser, hospitals, ambulances, requests, onNewRequestCreated, lang, setLang }) {
   const t = translations[lang];
 
   // Voice recording simulation state
@@ -645,83 +644,7 @@ export default function CitizenApp({ token, currentUser, hospitals, ambulances, 
   return (
     <div className="view-container" style={{ padding: '1rem', maxWidth: '1200px', margin: '0 auto' }}>
       
-      {/* Thin Header Bar */}
-      <header className="citizen-header glass-panel">
-        {/* Branding */}
-        <div className="header-branding" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div style={{
-            width: '32px', height: '32px',
-            backgroundColor: 'var(--primary-red)',
-            borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: 'white', fontWeight: 'bold', fontSize: '1.1rem',
-            boxShadow: '0 3px 6px rgba(239,68,68,0.2)'
-          }}>✚</div>
-          <div>
-            <h1 style={{ fontWeight: 800, fontSize: '1.2rem', color: 'var(--primary-red)', margin: 0 }}>{t.serviceName}</h1>
-          </div>
-        </div>
 
-        {/* Profile Info */}
-        <div className="header-profile" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-          <User size={14} style={{ color: 'var(--primary-blue)' }} />
-          <span><b>{currentUser?.name || 'Citizen'}</b> ({currentUser?.phone || ''})</span>
-        </div>
-
-        {/* Language & Hotline */}
-        <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ display: 'flex', gap: '0.2rem', background: '#f1f5f9', padding: '0.2rem', borderRadius: '20px' }}>
-            <button 
-              onClick={() => setLang('en')} 
-              className={`btn`} 
-              style={{ 
-                padding: '0.25rem 0.6rem', 
-                fontSize: '0.7rem', 
-                borderRadius: '15px',
-                background: lang === 'en' ? 'white' : 'transparent',
-                color: lang === 'en' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                border: 'none',
-                boxShadow: lang === 'en' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                fontWeight: lang === 'en' ? 'bold' : 'normal',
-                cursor: 'pointer'
-              }}
-            >
-              EN
-            </button>
-            <button 
-              onClick={() => setLang('ur')} 
-              className={`btn`}
-              style={{ 
-                padding: '0.25rem 0.6rem', 
-                fontSize: '0.7rem', 
-                borderRadius: '15px',
-                background: lang === 'ur' ? 'white' : 'transparent',
-                color: lang === 'ur' ? 'var(--primary-red)' : 'var(--text-secondary)',
-                boxShadow: lang === 'ur' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-              }}
-            >
-              اردو
-            </button>
-          </div>
-
-          <a href="tel:03350267742" className="btn" style={{
-            padding: '0.35rem 0.75rem',
-            fontSize: '0.75rem',
-            background: 'rgba(239, 68, 68, 0.08)',
-            color: 'var(--primary-red)',
-            border: '1px dashed var(--primary-red)',
-            borderRadius: '20px',
-            textDecoration: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.25rem',
-            fontWeight: 'bold'
-          }}>
-            <Phone size={12} /> Call 0335-0267742
-          </a>
-
-        </div>
-      </header>
 
       {!activeRequest ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>

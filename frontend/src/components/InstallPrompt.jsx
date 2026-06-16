@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowDownToLine, X, Share, PlusSquare, Info } from 'lucide-react';
+import brandLogo from '../assets/logo.png';
 
 export default function InstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -134,14 +135,16 @@ export default function InstallPrompt() {
           <div style={{
             width: '36px',
             height: '36px',
-            background: 'linear-gradient(135deg, #dc2626, #ef4444)',
-            borderRadius: '10px',
+            background: 'white',
+            borderRadius: '50%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)'
+            boxShadow: '0 4px 10px rgba(0, 0, 0, 0.2)',
+            overflow: 'hidden',
+            padding: '2px'
           }}>
-            <span style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>✚</span>
+            <img src={brandLogo} alt="GASG Logo" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
           </div>
           <div>
             <h4 style={{ margin: 0, fontWeight: 800, fontSize: '0.95rem', letterSpacing: '0.5px' }}>
