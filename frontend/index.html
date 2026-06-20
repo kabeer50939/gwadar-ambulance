@@ -11,9 +11,330 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <style>
+      /* Preloader Screen Styling */
+      #loadingDiv {
+        position: fixed;
+        width: 100%;
+        height: 100vh;
+        background-color: #020617; /* Slate-950 deep space background */
+        /* High-tech grid overlay */
+        background-image: 
+          linear-gradient(to right, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+          radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.98) 0px, transparent 75%),
+          radial-gradient(circle at 10% 10%, rgba(239, 68, 68, 0.12) 0px, transparent 40%),
+          radial-gradient(circle at 90% 90%, rgba(59, 130, 246, 0.08) 0px, transparent 40%);
+        background-size: 30px 30px, 30px 30px, 100% 100%, 100% 100%, 100% 100%;
+        top: 0;
+        left: 0;
+        z-index: 999999;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        opacity: 1;
+        transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: all;
+        overflow: hidden;
+      }
+
+      /* Rotating Star of Life watermark background */
+      .star-of-life-bg {
+        position: absolute;
+        width: 380px;
+        height: 380px;
+        opacity: 0.7;
+        z-index: 0;
+        pointer-events: none;
+        animation: rotateStar 30s linear infinite, pulseStar 3s infinite ease-in-out;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      @keyframes rotateStar {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      @keyframes pulseStar {
+        0%, 100% { opacity: 0.5; transform: scale(1) rotate(inherit); }
+        50% { opacity: 0.9; transform: scale(1.08) rotate(inherit); }
+      }
+
+      /* Animated SVG ECG heartbeat line in the background */
+      .ecg-background {
+        position: absolute;
+        width: 100%;
+        height: 220px;
+        opacity: 0.35;
+        pointer-events: none;
+        z-index: 1;
+        top: 50%;
+        transform: translateY(-160px);
+        left: 0;
+      }
+
+      .ecg-line {
+        stroke: #ef4444;
+        stroke-width: 4.5;
+        fill: none;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-dasharray: 2400;
+        stroke-dashoffset: 2400;
+        animation: ecgSweep 4s linear infinite;
+        filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.95)) drop-shadow(0 0 22px rgba(239, 68, 68, 0.65));
+      }
+
+      @keyframes ecgSweep {
+        to { stroke-dashoffset: 0; }
+      }
+
+      .preloader-container {
+        width: 100%;
+        position: absolute;
+        top: 55%;
+        left: 0;
+        z-index: 2;
+        transform: translateY(-50%);
+      }
+
+      /* Pulse glow circle in background representing heartbeat */
+      .heartbeat-glow {
+        position: absolute;
+        width: 180px;
+        height: 180px;
+        background: rgba(239, 68, 68, 0.08);
+        border-radius: 50%;
+        filter: blur(50px);
+        z-index: -1;
+        animation: pulseHeartbeat 1.6s infinite ease-in-out;
+      }
+
+      @keyframes pulseHeartbeat {
+        0%, 100% { transform: scale(1); opacity: 0.35; }
+        35% { transform: scale(1.4); opacity: 0.75; }
+        70% { transform: scale(1.15); opacity: 0.5; }
+      }
+
+      /* Progress bar track */
+      #progressBar {
+        width: 100%;
+        height: 4px;
+        background-color: rgba(255, 255, 255, 0.08);
+        border-radius: 10px;
+        position: relative;
+        overflow: visible;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      }
+
+      /* Progress fill with animated gradient */
+      #progressFill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #ef4444 0%, #f97316 50%, #3b82f6 100%);
+        background-size: 200% auto;
+        border-radius: 10px;
+        position: relative;
+        transition: width 0.12s linear;
+        box-shadow: 0 0 16px rgba(239, 68, 68, 0.7);
+        animation: gradientSweep 3s linear infinite;
+      }
+
+      @keyframes gradientSweep {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      /* Ambulance container moving along the right edge */
+      #progressFill span {
+        position: absolute;
+        right: -120px; /* Center the 120px wide ambulance icon */
+        bottom: 4px; /* Float slightly above the bar */
+        width: 120px;
+        height: 52px;
+        display: block;
+        filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.4));
+        pointer-events: none;
+      }
+
+      /* Driving motion road-bounce animation */
+      #progressFill span img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        animation: driveBounce 0.35s infinite ease-in-out;
+      }
+
+      @keyframes driveBounce {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        25% { transform: translateY(-1.8px) rotate(0.4deg); }
+        50% { transform: translateY(0.6px) rotate(-0.4deg); }
+        75% { transform: translateY(-1.2px) rotate(0.2deg); }
+      }
+
+      /* Dynamic flashing dual-colored siren lights */
+      .siren-glow {
+        position: absolute;
+        top: 6px;
+        left: 88px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        z-index: 10;
+        pointer-events: none;
+      }
+
+      .siren-glow::before, .siren-glow::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        animation: sirenSweep 0.5s infinite alternate ease-in-out;
+        pointer-events: none;
+      }
+
+      .siren-glow::before {
+        width: 28px;
+        height: 28px;
+        background: rgba(239, 68, 68, 0.35);
+        box-shadow: 0 0 15px #ef4444, 0 0 25px #ef4444;
+      }
+
+      .siren-glow::after {
+        width: 38px;
+        height: 38px;
+        background: rgba(59, 130, 246, 0.35);
+        box-shadow: 0 0 15px #3b82f6, 0 0 25px #3b82f6;
+        animation-delay: 0.25s;
+      }
+
+      @keyframes sirenSweep {
+        0% { opacity: 0.15; transform: translate(-50%, -50%) scale(0.7); }
+        100% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.3); }
+      }
+
+      /* Exhaust smoke particle puffs styling */
+      .smoke-container {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        width: 20px;
+        height: 20px;
+        pointer-events: none;
+      }
+
+      .smoke-puff {
+        position: absolute;
+        background-color: rgba(255, 255, 255, 0.25);
+        border-radius: 50%;
+        width: 6px;
+        height: 6px;
+        opacity: 0;
+        animation: smokeRelease 0.9s infinite linear;
+      }
+
+      .smoke-puff:nth-child(2) {
+        animation-delay: 0.3s;
+      }
+
+      .smoke-puff:nth-child(3) {
+        animation-delay: 0.6s;
+      }
+
+      @keyframes smokeRelease {
+        0% { transform: scale(0.6) translate(0, 0); opacity: 0.6; }
+        50% { transform: scale(1.6) translate(-14px, -4px); opacity: 0.3; }
+        100% { transform: scale(2.6) translate(-28px, -8px); opacity: 0; }
+      }
+
+    </style>
   </head>
   <body>
+    <!-- Preloader Wrapper -->
+    <div id="loadingDiv">
+      <!-- Rotating Star of Life watermark background -->
+      <div class="star-of-life-bg">
+        <svg viewBox="0 0 100 100" fill="none" stroke="rgba(59, 130, 246, 0.04)" stroke-width="2" style="width: 100%; height: 100%;">
+          <!-- Six pointed star -->
+          <path d="M50,10 L50,90 M10,33 L90,67 M10,67 L90,33" stroke-width="12" stroke-linecap="round"/>
+          <!-- Snake and Staff outline -->
+          <path d="M50,23 L50,77" stroke="rgba(239, 68, 68, 0.06)" stroke-width="3" stroke-linecap="round"/>
+          <path d="M47,65 Q53,60 50,55 T50,45 T50,35" stroke="rgba(239, 68, 68, 0.08)" stroke-width="2" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <!-- Heartbeat ECG graph lines running in background -->
+      <div class="ecg-background">
+        <svg viewBox="0 0 1000 100" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+          <path class="ecg-line" d="M0,50 L200,50 L220,50 L230,20 L240,80 L250,50 L270,50 L400,50 L410,20 L420,80 L430,50 L450,50 L600,50 L610,10 L625,90 L635,50 L650,50 L800,50 L810,25 L820,75 L830,50 L850,50 L1000,50" />
+        </svg>
+      </div>
+
+      <div class="heartbeat-glow"></div>
+      
+      <div class="preloader-container">
+        <div id="progressBar">
+          <div id="progressFill">
+            <span>
+              <div class="siren-glow"></div>
+              <!-- Exhaust puff smoke effects -->
+              <div class="smoke-container">
+                <div class="smoke-puff"></div>
+                <div class="smoke-puff"></div>
+                <div class="smoke-puff"></div>
+              </div>
+              <img src="/ambulance-loader.svg" alt="Responding...">
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- Preloader Progress Animation Logic -->
+    <script>
+      (function() {
+        let progress = 0;
+        const progressFill = document.getElementById('progressFill');
+        const loadingDiv = document.getElementById('loadingDiv');
+        
+        // Soft fallback to hide preloader in case of any React crash or slow load
+        const fallback = setTimeout(function() {
+          window.__reactAppReady = true;
+        }, 8000);
+
+        const interval = setInterval(function() {
+          if (window.__reactAppReady) {
+            clearInterval(interval);
+            clearTimeout(fallback);
+            progress = 100;
+            progressFill.style.width = '100%';
+            setTimeout(function() {
+              loadingDiv.style.opacity = '0';
+              setTimeout(function() {
+                loadingDiv.style.display = 'none';
+              }, 600);
+            }, 300);
+          } else {
+            if (progress < 90) {
+              // 40ms high frame rate increment: smaller step size for highly fluid, slow motion
+              const increment = Math.max(0.05, (90 - progress) * 0.0075 + (Math.random() * 0.18));
+              progress += increment;
+              if (progress > 90) progress = 90;
+              
+              progressFill.style.width = progress + '%';
+            }
+          }
+        }, 40);
+      })();
+    </script>
   </body>
 </html>

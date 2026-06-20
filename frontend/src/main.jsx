@@ -9,6 +9,9 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
+// Mark React application as ready to dismiss preloader screen
+window.__reactAppReady = true;
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
