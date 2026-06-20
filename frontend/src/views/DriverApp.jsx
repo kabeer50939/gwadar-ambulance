@@ -16,39 +16,235 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
   return (brng + 360) % 360;
 }
 
-// Advanced Grid Route Generator: creates L-shaped street grid turns
-function generateRoutePoints(startLat, startLng, endLat, endLng, steps = 40) {
-  const points = [];
-  const midStep = Math.floor(steps / 2);
+
+// Live ECG wave generator for patient vitals telemetry
+function ECGMonitor({ heartRate }) {
+  const canvasRef = useRef(null);
   
-  // Phase 1: Move along Latitude (North/South) to intermediate corner
-  for (let i = 0; i <= midStep; i++) {
-    const ratio = i / midStep;
-    const lat = startLat + (endLat - startLat) * ratio;
-    points.push({ lat, lng: startLng });
-  }
-  
-  // Phase 2: Move along Longitude (East/West) to destination
-  for (let i = 1; i <= (steps - midStep); i++) {
-    const ratio = i / (steps - midStep);
-    const lng = startLng + (endLng - startLng) * ratio;
-    points.push({ lat: endLat, lng });
-  }
-  
-  return points;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animationId;
+    let x = 0;
+    const width = canvas.width;
+    const height = canvas.height;
+    
+    // Clear once at start
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, width, height);
+
+    const drawGrid = () => {
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.05)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < width; i += 15) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, height);
+        ctx.stroke();
+      }
+      for (let j = 0; j < height; j += 15) {
+        ctx.beginPath();
+        ctx.moveTo(0, j);
+        ctx.lineTo(width, j);
+        ctx.stroke();
+      }
+    };
+
+    const points = [];
+    let phase = 0;
+    
+    const tick = () => {
+      if (!canvasRef.current) return;
+      const bpm = parseInt(heartRate) || 80;
+      const interval = Math.max(20, Math.floor(3600 / bpm));
+      phase++;
+      
+      let targetY = height / 2;
+      const t = phase % interval;
+      
+      // Generate QRS complex shape
+      if (t < 5) {
+        // Flat baseline
+      } else if (t < 8) {
+        // P wave
+        targetY -= 5 * Math.sin(((t - 5) / 3) * Math.PI);
+      } else if (t < 11) {
+        // Flat
+      } else if (t === 11) {
+        // Q drop
+        targetY += 3;
+      } else if (t === 12 || t === 13) {
+        // R peak
+        targetY -= 25;
+      } else if (t === 14 || t === 15) {
+        // S drop
+        targetY += 10;
+      } else if (t < 18) {
+        // Flat
+      } else if (t < 23) {
+        // T wave
+        targetY -= 7 * Math.sin(((t - 18) / 5) * Math.PI);
+      }
+      
+      points.push({ x, y: targetY });
+      if (points.length > width) {
+        points.shift();
+        points.forEach((p, idx) => p.x = idx);
+      } else {
+        x++;
+      }
+      
+      ctx.fillStyle = '#090d16';
+      ctx.fillRect(0, 0, width, height);
+      drawGrid();
+      
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = '#10b981';
+      ctx.beginPath();
+      if (points.length > 0) {
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      
+      animationId = requestAnimationFrame(tick);
+    };
+    
+    tick();
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [heartRate]);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      width={400} 
+      height={80} 
+      style={{ 
+        width: '100%', 
+        height: '80px', 
+        borderRadius: '6px', 
+        background: '#090d16',
+        border: '1px solid rgba(16, 185, 129, 0.15)',
+        boxShadow: 'inset 0 0 8px rgba(0, 0, 0, 0.8)'
+      }} 
+    />
+  );
 }
 
-export default function DriverApp({ token, currentUser, ambulances, hospitals, requests, triggerFetch }) {
+// Standby Radar Component
+function RadarScan() {
+  return (
+    <div style={{
+      position: 'relative',
+      width: '180px',
+      height: '180px',
+      borderRadius: '50%',
+      background: 'radial-gradient(circle, #0b1329 0%, #050814 100%)',
+      border: '2px solid rgba(16, 185, 129, 0.25)',
+      boxShadow: '0 0 20px rgba(16, 185, 129, 0.1), inset 0 0 15px rgba(16, 185, 129, 0.05)',
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      margin: '0 auto'
+    }}>
+      <div style={{
+        position: 'absolute',
+        width: '50%',
+        height: '50%',
+        background: 'linear-gradient(45deg, rgba(16, 185, 129, 0.35) 0%, transparent 100%)',
+        top: 0,
+        left: 0,
+        transformOrigin: 'bottom right',
+        animation: 'radar-sweep-anim 4s linear infinite',
+        borderRight: '1px solid rgba(16, 185, 129, 0.5)'
+      }} />
+      
+      <div style={{ position: 'absolute', width: '80%', height: '80%', borderRadius: '50%', border: '1px dashed rgba(16, 185, 129, 0.12)' }} />
+      <div style={{ position: 'absolute', width: '55%', height: '55%', borderRadius: '50%', border: '1px dashed rgba(16, 185, 129, 0.12)' }} />
+      <div style={{ position: 'absolute', width: '30%', height: '30%', borderRadius: '50%', border: '1px dashed rgba(16, 185, 129, 0.12)' }} />
+      
+      <div style={{ position: 'absolute', width: '100%', height: '1px', background: 'rgba(16, 185, 129, 0.08)' }} />
+      <div style={{ position: 'absolute', width: '1px', height: '100%', background: 'rgba(16, 185, 129, 0.08)' }} />
+      
+      <div style={{
+        position: 'absolute',
+        width: '6px',
+        height: '6px',
+        borderRadius: '50%',
+        backgroundColor: '#10b981',
+        top: '25%',
+        left: '42%',
+        boxShadow: '0 0 8px #10b981',
+        animation: 'radar-blip-anim 3s ease-out infinite'
+      }} />
+      <div style={{
+        position: 'absolute',
+        width: '5px',
+        height: '5px',
+        borderRadius: '50%',
+        backgroundColor: '#0284c7',
+        top: '70%',
+        left: '68%',
+        boxShadow: '0 0 8px #0284c7',
+        animation: 'radar-blip-anim 3s ease-out infinite',
+        animationDelay: '1.2s'
+      }} />
+      <div style={{
+        position: 'absolute',
+        width: '5px',
+        height: '5px',
+        borderRadius: '50%',
+        backgroundColor: '#f97316',
+        top: '60%',
+        left: '20%',
+        boxShadow: '0 0 8px #f97316',
+        animation: 'radar-blip-anim 3s ease-out infinite',
+        animationDelay: '2.1s'
+      }} />
+
+      <div style={{
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        backgroundColor: '#ef4444',
+        zIndex: 2,
+        boxShadow: '0 0 10px #ef4444'
+      }} />
+
+      <style>{`
+        @keyframes radar-sweep-anim {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes radar-blip-anim {
+          0% { opacity: 0; }
+          12% { opacity: 1; }
+          85% { opacity: 0.7; }
+          100% { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+
+export default function DriverApp({ token, currentUser, ambulances, hospitals, requests, triggerFetch, showMapModal, setShowMapModal }) {
   const [selectedAmbulanceId, setSelectedAmbulanceId] = useState(currentUser?.ambulance_id || '');
-  const [isTestSimulating, setIsTestSimulating] = useState(false);
-  const testSimIntervalRef = useRef(null);
-  const testSimAngleRef = useRef(0);
   const lastCoordsRef = useRef({ lat: 0, lng: 0, status: '' });
-  const [isOnline, setIsOnline] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [gpsError, setGpsError] = useState(false);
+  const [isMapMaximized, setIsMapMaximized] = useState(false);
   const [activeJob, setActiveJob] = useState(null);
   const [socket, setSocket] = useState(null);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [simulationStatus, setSimulationStatus] = useState('');
   const [vitalsExpanded, setVitalsExpanded] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
@@ -61,7 +257,6 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
   const [telemetryLoading, setTelemetryLoading] = useState(false);
 
   // Advanced States
-  const [isAutoTelemetry, setIsAutoTelemetry] = useState(false);
   const [sirenActive, setSirenActive] = useState(false);
 
   const simIntervalRef = useRef(null);
@@ -78,6 +273,47 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
   useEffect(() => {
     currentAmbulanceRef.current = currentAmbulance;
   }, [currentAmbulance]);
+
+  // Auto-Siren based on active job status progression
+  useEffect(() => {
+    if (!activeJob) {
+      if (sirenActive) {
+        setSirenActive(false);
+        stopSirenSynthesizer();
+      }
+      return;
+    }
+    
+    const shouldSirenBeActive = activeJob.status === 'En Route' || activeJob.status === 'At Hospital';
+    if (shouldSirenBeActive !== sirenActive) {
+      setSirenActive(shouldSirenBeActive);
+      if (shouldSirenBeActive) {
+        startSirenSynthesizer();
+        if (socket && isOnline) {
+          socket.emit('driver:location-update', {
+            ambulanceId: selectedAmbulanceId,
+            latitude: currentAmbulance ? currentAmbulance.latitude : 25.1219,
+            longitude: currentAmbulance ? currentAmbulance.longitude : 62.3254,
+            bearing: currentAmbulance ? currentAmbulance.bearing : 0,
+            status: activeJob.status,
+            siren: true
+          });
+        }
+      } else {
+        stopSirenSynthesizer();
+        if (socket && isOnline) {
+          socket.emit('driver:location-update', {
+            ambulanceId: selectedAmbulanceId,
+            latitude: currentAmbulance ? currentAmbulance.latitude : 25.1219,
+            longitude: currentAmbulance ? currentAmbulance.longitude : 62.3254,
+            bearing: currentAmbulance ? currentAmbulance.bearing : 0,
+            status: activeJob.status,
+            siren: false
+          });
+        }
+      }
+    }
+  }, [activeJob?.status, isOnline]);
 
   // Web Audio Synthesizer for Ambulance Siren Sound (soft 0.02 gain)
   const startSirenSynthesizer = () => {
@@ -188,44 +424,26 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     }
   }, [requests, currentUser.id, currentUser.ambulance_id, isOnline]);
 
-  // Auto-Telemetry generation loop
+
+  // Sync ambulance location on mount / socket connect / ambulances load
   useEffect(() => {
-    if (!isAutoTelemetry || !activeJob || activeJob.status !== 'Reached Patient') {
-      return;
-    }
+    if (!socket || !selectedAmbulanceId || !currentAmbulance) return;
+    
+    const status = activeJob ? activeJob.status : (currentAmbulance.status || 'Available');
+    console.log("Syncing driver location on socket connection/load:", currentAmbulance.latitude, currentAmbulance.longitude, "Status:", status);
+    
+    socket.emit('driver:location-update', {
+      ambulanceId: selectedAmbulanceId,
+      driverId: currentUser.id,
+      latitude: parseFloat(currentAmbulance.latitude) || 25.1225,
+      longitude: parseFloat(currentAmbulance.longitude) || 62.3210,
+      bearing: currentAmbulance.bearing || 0,
+      status: status,
+      siren: sirenActive
+    });
+  }, [socket, selectedAmbulanceId, !!currentAmbulance, activeJob?.status]);
 
-    const telemetryInterval = setInterval(() => {
-      const deltaHr = Math.floor(Math.random() * 5) - 2; // -2 to +2
-      const deltaSpo2 = Math.floor(Math.random() * 3) - 1; // -1 to +1
 
-      setHeartRate(prev => {
-        const next = Math.max(50, Math.min(150, parseInt(prev) + deltaHr));
-        setSpo2(s => {
-          const nextS = Math.max(70, Math.min(100, parseInt(s) + deltaSpo2));
-          const sys = 120 + Math.floor(Math.random() * 9) - 4;
-          const dia = 80 + Math.floor(Math.random() * 5) - 2;
-          const bp = `${sys}/${dia}`;
-          setBloodPressure(bp);
-
-          let nextCond = 'Stable';
-          if (nextS < 90 || next > 120) {
-            nextCond = 'Critical';
-          } else if (nextS < 95 || next > 100) {
-            nextCond = 'Guarded';
-          }
-          setCondition(nextCond);
-
-          sendTelemetryData(next, bp, nextS, nextCond);
-          return nextS;
-        });
-        return next;
-      });
-    }, 2500);
-
-    return () => {
-      clearInterval(telemetryInterval);
-    };
-  }, [isAutoTelemetry, activeJob?.id, activeJob?.status]);
 
   // Continuous driver GPS watch when driver is online
   useEffect(() => {
@@ -235,18 +453,17 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
     if (!navigator.geolocation) {
       console.warn("Geolocation not supported for driver tracking");
+      setGpsError(true);
       return;
     }
 
     console.log("Starting continuous GPS watch for driver...");
-    let activeWatchId;
+    let activeWatchId = null;
 
     const startWatch = (highAccuracy) => {
-      activeWatchId = navigator.geolocation.watchPosition(
+      const id = navigator.geolocation.watchPosition(
         (position) => {
-          // If simulation or test simulator is running, ignore real GPS updates to avoid overriding it
-          if (isSimulating || isTestSimulating) return;
-
+          setGpsError(false);
           const { latitude, longitude } = position.coords;
           const status = activeJob?.status || 'Available';
           
@@ -263,59 +480,27 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
         },
         (err) => {
           console.warn("Driver watchPosition error, retrying with low accuracy...", err);
+          setGpsError(true);
           if (highAccuracy) {
-            navigator.geolocation.clearWatch(activeWatchId);
-            startWatch(false);
+            navigator.geolocation.clearWatch(id);
+            activeWatchId = startWatch(false);
           }
         },
         { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 3000 : 10000, maximumAge: 0 }
       );
+      return id;
     };
 
-    startWatch(true);
+    activeWatchId = startWatch(true);
 
     return () => {
       console.log("Stopping driver GPS watch...");
-      if (activeWatchId !== undefined) {
+      if (activeWatchId !== null) {
         navigator.geolocation.clearWatch(activeWatchId);
       }
     };
-  }, [isOnline, selectedAmbulanceId, activeJob?.status, isSimulating, isTestSimulating]);
+  }, [isOnline, selectedAmbulanceId, activeJob?.status]);
 
-  // Continuous test movement simulator loop
-  useEffect(() => {
-    if (isTestSimulating && isOnline && selectedAmbulanceId) {
-      console.log("Starting test movement simulation...");
-      
-      const baseLat = currentAmbulance?.latitude || 25.1219;
-      const baseLng = currentAmbulance?.longitude || 62.3254;
-      
-      testSimIntervalRef.current = setInterval(() => {
-        testSimAngleRef.current += 0.15; // Increments angle in radians
-        
-        // Circular path of radius ~200 meters (0.002 degrees)
-        const lat = baseLat + Math.sin(testSimAngleRef.current) * 0.002;
-        const lng = baseLng + Math.cos(testSimAngleRef.current) * 0.002;
-        const bearing = (testSimAngleRef.current * 180 / Math.PI) % 360;
-        const status = activeJob?.status || 'Available';
-        
-        console.log("Test simulator updated position:", lat, lng);
-        updateServerLocation(lat, lng, bearing, status);
-      }, 3000);
-    } else {
-      if (testSimIntervalRef.current) {
-        clearInterval(testSimIntervalRef.current);
-        testSimIntervalRef.current = null;
-      }
-    }
-    
-    return () => {
-      if (testSimIntervalRef.current) {
-        clearInterval(testSimIntervalRef.current);
-        testSimIntervalRef.current = null;
-      }
-    };
-  }, [isTestSimulating, isOnline, selectedAmbulanceId, activeJob?.status, currentAmbulance?.id]);
 
   // WebSockets setup
   useEffect(() => {
@@ -334,18 +519,6 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
 
     newSocket.on('connect', () => {
       console.log(`Driver socket connected for driver ${currentUser.id}:`, newSocket.id);
-      const latestAmb = currentAmbulanceRef.current;
-      if (selectedAmbulanceId && latestAmb) {
-        newSocket.emit('driver:location-update', {
-          ambulanceId: selectedAmbulanceId,
-          driverId: currentUser.id,
-          latitude: latestAmb.latitude,
-          longitude: latestAmb.longitude,
-          bearing: latestAmb.bearing,
-          status: 'Available',
-          siren: sirenActive
-        });
-      }
     });
 
     newSocket.on(`driver:assigned:${currentUser.id}`, (payload) => {
@@ -389,10 +562,21 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       });
     });
 
+    newSocket.on('request:deleted', (deletedId) => {
+      setActiveJob(prevJob => {
+        if (prevJob && prevJob.id === deletedId) {
+          return null;
+        }
+        return prevJob;
+      });
+      triggerFetch();
+    });
+
+
     newSocket.on('system:reset', () => {
-      setIsOnline(false);
+      setIsOnline(true);
       setActiveJob(null);
-      setSelectedAmbulanceId('');
+      setSelectedAmbulanceId(currentUser?.ambulance_id || '');
       stopSirenSynthesizer();
       setSirenActive(false);
       setIsAutoTelemetry(false);
@@ -421,8 +605,8 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
       setIsOnline(false);
       setActiveJob(null);
       setSelectedAmbulanceId('');
-      setIsTestSimulating(false);
       stopSirenSynthesizer();
+
       setSirenActive(false);
       setIsAutoTelemetry(false);
     } else {
@@ -497,54 +681,6 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     }
   };
 
-  // ADVANCED GPS SIMULATOR ENGINE (Grid navigation + Turn instructions)
-  const startSimulation = (destLat, destLng, targetStatus, onFinished) => {
-    if (!currentAmbulance) return;
-    if (simIntervalRef.current) clearInterval(simIntervalRef.current);
-
-    setIsSimulating(true);
-
-    const startLat = currentAmbulance.latitude;
-    const startLng = currentAmbulance.longitude;
-
-    const steps = 40; // 40 steps for smoother turns
-    const routePoints = generateRoutePoints(startLat, startLng, destLat, destLng, steps);
-    const midStep = Math.floor(steps / 2);
-
-    let currentStep = 0;
-    const intervalMs = 250; // ~10s total duration
-
-    simIntervalRef.current = setInterval(() => {
-      if (currentStep >= routePoints.length) {
-        clearInterval(simIntervalRef.current);
-        setIsSimulating(false);
-        setSimulationStatus('');
-        // Snap to destination and update
-        updateServerLocation(destLat, destLng, calculateBearing(startLat, startLng, destLat, destLng), targetStatus);
-        if (onFinished) onFinished();
-        return;
-      }
-
-      const currentPt = routePoints[currentStep];
-      const nextPt = routePoints[currentStep + 1] || currentPt;
-      const bearing = calculateBearing(currentPt.lat, currentPt.lng, nextPt.lat, nextPt.lng);
-
-      // Generate dynamic Turn-by-Turn Instruction based on steps
-      const hudMsg = currentStep < midStep - 3
-        ? (targetStatus === 'Reached Patient' ? "Head North on Airport Link Road towards patient..." : "Proceed North towards emergency hospital intake...")
-        : (currentStep >= midStep - 3 && currentStep <= midStep + 2)
-          ? "Turn right onto Gwadar Harbour Expressway..."
-          : (currentStep > midStep + 2 && currentStep < steps - 3)
-            ? "Drive straight towards destination gate..."
-            : "Approaching destination. Slowing down...";
-
-      setSimulationStatus(hudMsg);
-      updateServerLocation(currentPt.lat, currentPt.lng, bearing, targetStatus);
-      currentStep++;
-    }, intervalMs);
-  };
-
-  // Status progression config — single button advances through each step
   const STATUS_STEPS = [
     {
       from: 'Assigned',
@@ -585,548 +721,507 @@ export default function DriverApp({ token, currentUser, ambulances, hospitals, r
     await updateJobStatus(step.to);
     setIsUpdatingStatus(false);
 
-    // Trigger GPS simulation in parallel when starting to drive
+    // Control siren and trigger fetch
     if (step.to === 'En Route') {
-      startSimulation(activeJob.latitude, activeJob.longitude, 'En Route', null);
-    } else if (step.to === 'At Hospital' && activeJob.assigned_hospital_id) {
-      const hospital = hospitals.find(h => h.id === activeJob.assigned_hospital_id);
-      if (hospital) startSimulation(hospital.latitude, hospital.longitude, 'At Hospital', null);
+      startSirenSynthesizer();
+      setSirenActive(true);
     } else if (step.to === 'Completed - Awaiting Verification') {
-      triggerFetch();
+      stopSirenSynthesizer();
+      setSirenActive(false);
     }
+    triggerFetch();
   };
 
+
   return (
-    <div className="view-container" style={{ padding: '1rem', maxWidth: '100%', margin: 0 }}>
-      <div className="driver-dashboard-grid">
-        
-        {/* Left Column: Driver Control Panel */}
-        <div className="dashboard-sidebar" style={{ gap: '1rem' }}>
+    <div className="driver-console-wrapper">
+      <style>{`
+        .driver-console-wrapper {
+          background-color: #0b0f19;
+          color: #f8fafc;
+          min-height: calc(100vh - 90px);
+          font-family: 'Outfit', sans-serif;
+          padding: 1.25rem;
+          box-sizing: border-box;
+          width: 100%;
+        }
+        .driver-panel-dark {
+          background: rgba(15, 23, 42, 0.7);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(51, 65, 85, 0.45);
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          padding: 1.25rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .driver-panel-header {
+          border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+          padding-bottom: 0.75rem;
+          margin-bottom: 0.25rem;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .driver-panel-title {
+          font-size: 0.95rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.75px;
+          margin: 0;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+        .driver-badge-neon {
+          font-size: 0.65rem;
+          font-weight: 700;
+          padding: 0.15rem 0.45rem;
+          border-radius: 4px;
+          text-transform: uppercase;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+        }
+        .driver-badge-green {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .driver-badge-blue {
+          background: rgba(2, 132, 199, 0.1);
+          color: #38bdf8;
+          border: 1px solid rgba(2, 132, 199, 0.3);
+        }
+        .driver-badge-red {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .driver-badge-orange {
+          background: rgba(249, 115, 22, 0.1);
+          color: #f97316;
+          border: 1px solid rgba(249, 115, 22, 0.3);
+        }
+        .driver-btn-tactical {
+          padding: 0.65rem 1rem;
+          font-size: 0.8rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          transition: all 0.2s ease;
+        }
+        .driver-btn-primary {
+          background: #0284c7;
+          color: white;
+          box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+        }
+        .driver-btn-primary:hover {
+          background: #0369a1;
+          transform: translateY(-1px);
+        }
+        .driver-btn-success {
+          background: #16a34a;
+          color: white;
+          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
+        }
+        .driver-btn-success:hover {
+          background: #15803d;
+          transform: translateY(-1px);
+        }
+        .driver-btn-danger {
+          background: #ef4444;
+          color: white;
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+        }
+        .driver-btn-danger:hover {
+          background: #dc2626;
+          transform: translateY(-1px);
+        }
+        .driver-btn-secondary {
+          background: rgba(51, 65, 85, 0.4);
+          color: #f8fafc;
+          border: 1px solid rgba(71, 85, 105, 0.4);
+        }
+        .driver-btn-secondary:hover {
+          background: rgba(71, 85, 105, 0.5);
+        }
+        .vitals-readout-card {
+          background: #090d16;
+          border: 1px solid rgba(51, 65, 85, 0.5);
+          border-radius: 10px;
+          padding: 0.65rem;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          gap: 0.2rem;
+        }
+        .vitals-readout-label {
+          font-size: 0.6rem;
+          font-weight: 700;
+          color: #94a3b8;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .vitals-readout-value {
+          font-size: 1.35rem;
+          font-weight: 800;
+          font-family: monospace;
+        }
+        .mission-grid {
+          display: grid;
+          grid-template-columns: 1.2fr 1fr;
+          gap: 1.25rem;
+          width: 100%;
+        }
+        @media (max-width: 992px) {
+          .mission-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+
+      {activeJob ? (
+        /* Emergency dispatch assigned split-layout grid */
+        <div className="mission-grid">
           
-          {/* 🚨 Driver Terminal Header & Profile */}
-          <div className="glass-panel dashboard-panel" style={{ height: 'auto', borderRadius: '16px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div className="panel-header" style={{ marginBottom: 0, paddingBottom: '0.5rem' }}>
-              <h2 className="panel-title" style={{ color: 'var(--primary-orange)', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                <Truck size={20} /> Driver Terminal
-              </h2>
-              {isOnline ? (
-                <span className="badge badge-green pulse-icon" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem' }}>
-                  <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-green)', display: 'inline-block' }}></span>
-                  Online
-                </span>
-              ) : (
-                <span className="badge badge-red" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.7rem', background: 'rgba(239, 68, 68, 0.05)', color: 'var(--primary-red)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-                  Offline
-                </span>
-              )}
+          {/* Left Column: Mission Control */}
+          <div className="driver-panel-dark" style={{ borderLeft: '4px solid #f97316' }}>
+            <div className="driver-panel-header">
+              <h4 className="driver-panel-title" style={{ color: '#f97316' }}>
+                ⚡ EMERGENCY MISSION CONTROL
+              </h4>
+              <span className="driver-badge-neon driver-badge-red" style={{ fontWeight: 800 }}>
+                {activeJob.emergency_type}
+              </span>
             </div>
 
-            {/* Driver Profile Summary */}
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', background: '#f8fafc', padding: '0.75rem', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-              {currentUser?.photo ? (
-                <img src={currentUser.photo} alt={currentUser.name} style={{ width: '48px', height: '48px', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border-color)' }} />
-              ) : (
-                <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>👤</div>
-              )}
-              <div>
-                <p style={{ fontWeight: 'bold', fontSize: '0.85rem', margin: 0 }}>{currentUser.name}</p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: '0.1rem 0 0 0' }}>CNIC: {currentUser.cnic || '—'}</p>
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', margin: 0 }}>Phone: {currentUser.phone || '—'}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              {/* Citizen information card */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.8)', padding: '0.85rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.4)' }}>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 800, letterSpacing: '0.5px' }}>REPORTING CITIZEN</div>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc' }}>{activeJob.citizen_name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#38bdf8' }}>
+                  <Phone size={13} />
+                  <a href={`tel:${activeJob.citizen_phone}`} style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 'bold' }}>
+                    {activeJob.citizen_phone}
+                  </a>
+                </div>
               </div>
-            </div>
 
-            {/* Dynamic vehicle assignment details during active dispatches */}
-            {activeJob && selectedAmbulanceId && (
-              <div style={{ 
-                background: 'linear-gradient(135deg, rgba(22, 163, 74, 0.05) 0%, rgba(22, 163, 74, 0.02) 100%)', 
-                border: '1px solid rgba(22, 163, 74, 0.15)', 
-                padding: '0.75rem 1rem', 
-                borderRadius: '12px', 
-                fontSize: '0.85rem', 
-                color: '#166534'
-              }}>
-                <p style={{ fontWeight: 600, fontSize: '0.85rem', margin: 0 }}>
-                  Assigned Vehicle: <span style={{ fontWeight: 800 }}>{currentAmbulance?.vehicle_number || '—'}</span>
-                </p>
-                {currentAmbulance?.model && (
-                  <p style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '0.1rem', margin: 0 }}>
-                    Model: {currentAmbulance.model}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Online/Offline and Siren Quick Toggles */}
-            <div style={{ display: 'grid', gridTemplateColumns: isOnline && selectedAmbulanceId ? '1fr 1fr' : '1fr', gap: '0.75rem' }}>
-              <button
-                onClick={handleToggleDuty}
-                className={`btn ${isOnline ? 'btn-danger' : 'btn-success'}`}
-                style={{ 
-                  padding: '0.6rem 1rem', 
-                  fontSize: '0.85rem', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  gap: '0.4rem',
-                  borderRadius: '10px',
-                  boxShadow: isOnline ? '0 4px 10px rgba(239, 68, 68, 0.15)' : '0 4px 10px rgba(22, 163, 74, 0.15)'
-                }}
-              >
-                <Power size={15} />
-                {isOnline ? 'End Duty' : 'Go Online'}
-              </button>
-
-              {isOnline && selectedAmbulanceId && (
-                <button
-                  onClick={toggleSiren}
-                  className={`btn ${sirenActive ? 'pulse-red-glow' : 'btn-secondary'}`}
-                  style={{ 
-                    padding: '0.6rem 1rem', 
-                    fontSize: '0.85rem', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    gap: '0.4rem',
-                    borderRadius: '10px',
-                      backgroundColor: sirenActive ? 'var(--primary-red)' : '#f8fafc',
-                      color: sirenActive ? 'white' : 'var(--text-primary)',
-                      border: sirenActive ? 'none' : '1px solid var(--border-color)',
-                      fontWeight: 'bold',
-                      boxShadow: sirenActive ? '0 4px 12px rgba(239, 68, 68, 0.35)' : 'none'
-                    }}
-                  >
-                    <span>🚨</span>
-                    {sirenActive ? 'Mute Siren' : 'Siren'}
-                  </button>
-                )}
+              {/* Pickup location card */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(15, 23, 42, 0.8)', padding: '0.85rem', borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.4)' }}>
+                <div style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 800, letterSpacing: '0.5px' }}>PICKUP PATIENT LOCATION</div>
+                <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3 }}>
+                  📍 {activeJob.location_name}
+                </div>
               </div>
             </div>
 
-            {/* GPS Tracking Status Panel */}
-            {isOnline && selectedAmbulanceId && (
-              <div className="glass-panel" style={{ padding: '1rem', borderRadius: '16px', background: 'white', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '4px solid var(--primary-blue)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ 
-                    fontSize: '0.88rem', 
-                    fontWeight: 700, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '0.4rem', 
-                    color: 'var(--primary-blue)',
-                    margin: 0
-                  }}>
-                    <Navigation size={16} /> GPS Tracking
-                  </h3>
-                  {isSimulating || isTestSimulating ? (
-                    <span className="badge badge-blue pulse-icon" style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-blue)', display: 'inline-block' }}></span>
-                      Simulating
-                    </span>
-                  ) : (
-                    <span className="badge badge-green pulse-icon" style={{ fontSize: '0.65rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--primary-green)', display: 'inline-block' }}></span>
-                      Live GPS
-                    </span>
-                  )}
-                </div>
-
-                {/* Coordinates display */}
-                <div style={{ 
-                  background: '#f8fafc', 
-                  padding: '0.6rem 0.8rem', 
-                  borderRadius: '10px', 
-                  border: '1px solid var(--border-color)',
-                  fontSize: '0.78rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.25rem'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Latitude:</span>
-                    <strong style={{ fontFamily: 'monospace' }}>
-                      {currentAmbulance?.latitude ? currentAmbulance.latitude.toFixed(6) : '—'}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Longitude:</span>
-                    <strong style={{ fontFamily: 'monospace' }}>
-                      {currentAmbulance?.longitude ? currentAmbulance.longitude.toFixed(6) : '—'}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #e2e8f0', paddingTop: '0.25rem', marginTop: '0.25rem', fontSize: '0.72rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Vehicle:</span>
-                    <strong>{currentAmbulance?.vehicle_number || '—'}</strong>
-                  </div>
-                </div>
-
-                {/* Test Simulator Toggle Switch */}
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  padding: '0.5rem 0.6rem', 
-                  borderRadius: '8px', 
-                  background: isTestSimulating ? 'rgba(59, 130, 246, 0.05)' : '#f8fafc', 
-                  border: '1px solid var(--border-color)',
-                  fontSize: '0.75rem'
-                }}>
-                  <span style={{ fontWeight: 700, color: isTestSimulating ? 'var(--primary-blue)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    {isTestSimulating ? '🛰️ Test Patrol Active' : '⚙️ Test Patrol Simulator'}
-                  </span>
-                  <input 
-                    type="checkbox" 
-                    checked={isTestSimulating} 
-                    disabled={isSimulating}
-                    onChange={e => setIsTestSimulating(e.target.checked)} 
-                    style={{ width: '16px', height: '16px', cursor: isSimulating ? 'not-allowed' : 'pointer' }}
-                  />
-                </div>
-              </div>
-            )}
-
-          {/* Active Dispatch details */}
-          {isOnline && activeJob ? (
-            <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '16px', background: 'white', borderLeft: '4px solid var(--primary-orange)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h4 style={{ color: 'var(--primary-orange)', fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  ⚡ Emergency Dispatch
-                </h4>
-                <span className="badge badge-red" style={{ fontSize: '0.65rem', padding: '0.15rem 0.5rem' }}>
-                  {activeJob.emergency_type}
-                </span>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
-                <p style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{activeJob.citizen_name}</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <Phone size={14} style={{ color: 'var(--text-muted)' }} />
-                    <a href={`tel:${activeJob.citizen_phone}`} style={{ color: 'var(--primary-blue)', textDecoration: 'none', fontWeight: 600 }}>
-                      {activeJob.citizen_phone}
-                    </a>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'start', gap: '0.4rem', marginTop: '0.1rem' }}>
-                    <MapPin size={14} style={{ color: 'var(--text-muted)', marginTop: '0.1rem', flexShrink: 0 }} />
-                    <span style={{ lineHeight: '1.3' }}>📍 <b>{activeJob.location_name}</b></span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Single Progressive Status Button */}
-              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.85rem' }}>
-
-                {/* Step progress indicator */}
-                {(() => {
-                  const stepIndex = STATUS_STEPS.findIndex(s => s.from === activeJob.status);
-                  const totalSteps = STATUS_STEPS.length;
-                  return stepIndex >= 0 ? (
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: '0.3rem', fontWeight: 600 }}>
-                        <span>PROGRESS</span>
-                        <span>Step {stepIndex + 1} of {totalSteps}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: '3px' }}>
-                        {STATUS_STEPS.map((_, i) => (
-                          <div key={i} style={{
-                            flex: 1, height: '4px', borderRadius: '4px',
-                            background: i <= stepIndex ? 'var(--primary-green)' : 'rgba(0,0,0,0.08)',
-                            transition: 'background 0.3s'
-                          }} />
-                        ))}
-                      </div>
-                      {STATUS_STEPS[stepIndex] && (
-                        <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0.35rem 0 0 0', lineHeight: '1.3' }}>
-                          {STATUS_STEPS[stepIndex].description}
-                        </p>
-                      )}
+            {/* Stepper progression */}
+            <div style={{ borderTop: '1px solid rgba(51, 65, 85, 0.4)', paddingTop: '1rem', marginTop: '0.25rem' }}>
+              {(() => {
+                const stepIndex = STATUS_STEPS.findIndex(s => s.from === activeJob.status);
+                const totalSteps = STATUS_STEPS.length;
+                return stepIndex >= 0 ? (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94a3b8', marginBottom: '0.4rem', fontWeight: 800, letterSpacing: '0.5px' }}>
+                      <span>MISSION STAGE PROGRESSION</span>
+                      <span>STEP {stepIndex + 1} OF {totalSteps}</span>
                     </div>
-                  ) : null;
-                })()}
-
-                {/* The single action button — advances to next status */}
-                {STATUS_STEPS.find(s => s.from === activeJob.status) ? (
-                  <button
-                    onClick={handleProgressStatus}
-                    disabled={isSimulating || isUpdatingStatus}
-                    className={`btn ${STATUS_STEPS.find(s => s.from === activeJob.status)?.color || 'btn-primary'}`}
-                    style={{ width: '100%', fontSize: '0.88rem', padding: '0.75rem', borderRadius: '10px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', boxShadow: '0 4px 14px rgba(0,0,0,0.1)', transition: 'all 0.2s' }}
-                  >
-                    {isSimulating ? (
-                      <><span className="pulse-icon">🛰️</span> GPS Tracking Active...</>
-                    ) : isUpdatingStatus ? (
-                      'Updating Status...'
-                    ) : (
-                      STATUS_STEPS.find(s => s.from === activeJob.status)?.label
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {STATUS_STEPS.map((_, i) => (
+                        <div key={i} style={{
+                          flex: 1, height: '6px', borderRadius: '3px',
+                          background: i <= stepIndex ? '#16a34a' : 'rgba(255,255,255,0.08)',
+                          boxShadow: i <= stepIndex ? '0 0 8px rgba(22, 163, 74, 0.4)' : 'none',
+                          transition: 'all 0.3s'
+                        }} />
+                      ))}
+                    </div>
+                    {STATUS_STEPS[stepIndex] && (
+                      <p style={{ fontSize: '0.72rem', color: '#94a3b8', margin: '0.5rem 0 0 0', lineHeight: '1.4' }}>
+                        ℹ️ {STATUS_STEPS[stepIndex].description}
+                      </p>
                     )}
-                  </button>
-                ) : activeJob.status === 'Completed - Awaiting Verification' ? (
-                  <div style={{ 
-                    padding: '0.75rem', 
-                    background: 'rgba(249, 115, 22, 0.05)', 
-                    border: '1px solid rgba(249, 115, 22, 0.15)', 
-                    borderRadius: '10px', 
-                    color: 'var(--primary-orange)', 
-                    fontSize: '0.8rem', 
-                    fontWeight: 600, 
-                    textAlign: 'center',
-                    lineHeight: '1.5'
-                  }}>
-                    ⏳ Trip complete. Awaiting citizen &amp; dispatcher confirmation.
                   </div>
-                ) : null}
+                ) : null;
+              })()}
 
-                {/* Hospital info strip when relevant */}
-                {(activeJob.status === 'Reached Patient' || activeJob.status === 'At Hospital') && (
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.72rem', color: 'var(--text-secondary)', background: '#f1f5f9', padding: '0.45rem 0.65rem', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
-                    🏥 Hospital: <b>{hospitals.find(h => h.id === activeJob.assigned_hospital_id)?.name || 'None Assigned'}</b>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : isOnline ? (
-            /* Standby radar style */
-            <div style={{ 
-              textAlign: 'center', 
-              padding: '2rem 1rem', 
-              background: 'white', 
-              borderRadius: '16px', 
-              border: '1px solid var(--border-color)', 
-              boxShadow: 'var(--shadow-lg)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.75rem'
-            }}>
-              <div style={{ position: 'relative', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div className="pulse-ring" style={{ borderColor: 'var(--primary-green)', borderWidth: '2px' }}></div>
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(22, 163, 74, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary-green)' }}>
-                  <Activity size={18} className="pulse-icon" />
-                </div>
-              </div>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)' }}>Standing By...</h4>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', lineHeight: '1.4', maxWidth: '220px' }}>
-                Ready for dispatch.
-              </p>
-            </div>
-          ) : (
-            <div className="glass-panel" style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.8rem', borderRadius: '16px', background: 'white' }}>
-              Click <b>Go Online</b> to start receiving dispatch jobs.
-            </div>
-          )}
+              {/* Status Action Button */}
+              {STATUS_STEPS.find(s => s.from === activeJob.status) ? (
+                <button
+                  onClick={handleProgressStatus}
+                  disabled={isUpdatingStatus}
+                  className={`driver-btn-tactical ${
+                    STATUS_STEPS.find(s => s.from === activeJob.status)?.color === 'btn-success' 
+                    ? 'driver-btn-success' 
+                    : STATUS_STEPS.find(s => s.from === activeJob.status)?.color === 'btn-danger'
+                    ? 'driver-btn-danger'
+                    : 'driver-btn-primary'
+                  }`}
+                  style={{ width: '100%', fontSize: '0.9rem', padding: '0.85rem', fontWeight: 'bold' }}
+                >
+                  {isUpdatingStatus ? (
+                    'UPDATING CENTRAL MISSION FILE...'
+                  ) : (
+                    STATUS_STEPS.find(s => s.from === activeJob.status)?.label
+                  )}
+                </button>
 
-          {/* 🩺 Patient Vitals ePCR Telemetry Form (Collapsible Accordion) */}
-          {isOnline && activeJob && (activeJob.status === 'Reached Patient' || activeJob.status === 'At Hospital') && (
-            <div className="glass-panel" style={{ padding: '1rem', borderRadius: '16px', background: 'white' }}>
-              <button 
-                onClick={() => setVitalsExpanded(!vitalsExpanded)}
-                style={{ 
-                  width: '100%', 
-                  background: 'none', 
-                  border: 'none', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  cursor: 'pointer',
-                  padding: 0
-                }}
-              >
-                <h3 style={{ 
-                  fontSize: '0.9rem', 
-                  fontWeight: 700, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '0.4rem', 
-                  color: 'var(--primary-red)',
-                  margin: 0
+              ) : activeJob.status === 'Completed - Awaiting Verification' ? (
+                <div style={{ 
+                  padding: '0.85rem', 
+                  background: 'rgba(249, 115, 22, 0.1)', 
+                  border: '1px solid rgba(249, 115, 22, 0.3)', 
+                  borderRadius: '10px', 
+                  color: '#f97316', 
+                  fontSize: '0.85rem', 
+                  fontWeight: 'bold', 
+                  textAlign: 'center',
+                  lineHeight: '1.5'
                 }}>
-                  <HeartPulse size={16} /> Patient Vitals
-                </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  {isAutoTelemetry && (
-                    <span className="badge badge-green pulse-icon" style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem' }}>
-                      Auto-Streaming
-                    </span>
-                  )}
-                  {vitalsExpanded ? <ChevronUp size={16} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={16} style={{ color: 'var(--text-muted)' }} />}
+                  ⏳ MISSION TERMINATED. AWAITING CITIZEN / DISPATCHER VALIDATION CLOSEOUT.
                 </div>
-              </button>
+              ) : null}
 
-              {vitalsExpanded && (
-                <div style={{ marginTop: '0.85rem', animation: 'slideIn 0.2s ease-out' }}>
-                  {telemetrySuccess && (
-                    <div className="alert-banner alert-banner-success" style={{ padding: '0.4rem 0.6rem', fontSize: '0.75rem', marginBottom: '0.75rem', borderRadius: '6px' }}>
-                      ✓ Vitals successfully transmitted to hospital!
-                    </div>
-                  )}
+              {/* Target Hospital info */}
+              {(activeJob.status === 'Reached Patient' || activeJob.status === 'At Hospital') && (
+                <div style={{ marginTop: '0.75rem', fontSize: '0.78rem', color: '#fbbf24', background: 'rgba(15, 23, 42, 0.8)', padding: '0.55rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(51, 65, 85, 0.4)' }}>
+                  🏥 DESTINATION HOSPITAL INTAKE: <b>{hospitals.find(h => h.id === activeJob.assigned_hospital_id)?.name || 'NONE ASSIGNED'}</b>
+                </div>
+              )}
+            </div>
+          </div>
 
-                  {/* Auto vital simulator toggle switch */}
-                  <div style={{ 
-                    marginBottom: '0.75rem', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    padding: '0.4rem 0.6rem', 
-                    borderRadius: '8px', 
-                    background: isAutoTelemetry ? 'rgba(22, 163, 74, 0.05)' : '#f8fafc', 
-                    border: '1px solid var(--border-color)',
-                    fontSize: '0.75rem'
-                  }}>
-                    <span style={{ fontWeight: 700, color: isAutoTelemetry ? 'var(--primary-green)' : 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      {isAutoTelemetry && <Radio size={12} className="pulse-icon" />}
-                      {isAutoTelemetry ? 'Live Streaming' : 'Simulate Telemetry'}
-                    </span>
+          {/* Right Column: Patient Vitals Telemetry Console */}
+          {(activeJob.status === 'Reached Patient' || activeJob.status === 'At Hospital') && (
+            <div className="driver-panel-dark" style={{ borderLeft: '4px solid #ef4444' }}>
+              <div className="driver-panel-header">
+                <h3 className="driver-panel-title" style={{ color: '#ef4444' }}>
+                  🩺 PATIENT TELEMETRY CONSOLE
+                </h3>
+              </div>
+
+              {telemetrySuccess && (
+                <div style={{ padding: '0.55rem 0.75rem', fontSize: '0.75rem', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  ✓ Telemetry link secure. Vitals transmitted to central intake in real-time.
+                </div>
+              )}
+
+              {/* ECG monitor */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <div style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.5px' }}>LIVE CARDIO-TELEMETRY (ECG)</div>
+                <ECGMonitor heartRate={heartRate} />
+              </div>
+
+              {/* Vitals neon reading values grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem', margin: '0.25rem 0' }}>
+                <div className="vitals-readout-card">
+                  <span className="vitals-readout-label">HEART RATE</span>
+                  <span className="vitals-readout-value driver-value-neon-green">{heartRate} <span style={{ fontSize: '0.65rem' }}>BPM</span></span>
+                </div>
+                <div className="vitals-readout-card">
+                  <span className="vitals-readout-label">BLOOD PRESS.</span>
+                  <span className="vitals-readout-value driver-value-neon-yellow" style={{ fontSize: '1.15rem', paddingTop: '0.15rem' }}>{bloodPressure}</span>
+                </div>
+                <div className="vitals-readout-card">
+                  <span className="vitals-readout-label">OXYGEN SAT.</span>
+                  <span className="vitals-readout-value driver-value-neon-blue">{spo2}<span style={{ fontSize: '0.65rem' }}>%</span></span>
+                </div>
+                <div className="vitals-readout-card">
+                  <span className="vitals-readout-label">STATUS</span>
+                  <span className={`vitals-readout-value ${condition === 'Critical' ? 'driver-badge-neon driver-badge-red' : condition === 'Guarded' ? 'driver-badge-neon driver-badge-orange' : 'driver-badge-neon driver-badge-green'}`} style={{ fontSize: '0.75rem', paddingTop: '0.5rem', border: 'none', background: 'none', fontWeight: 800 }}>
+                    {condition.toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              {/* Vital entry form */}
+              <form onSubmit={handleSendTelemetry} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem', color: '#94a3b8', fontWeight: 800 }}>Heart Rate (BPM)</label>
                     <input 
-                      type="checkbox" 
-                      checked={isAutoTelemetry} 
-                      onChange={e => setIsAutoTelemetry(e.target.checked)} 
-                      style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                      type="number" 
+                      className="form-input" 
+                      style={{ padding: '0.45rem', fontSize: '0.85rem', background: '#090d16', color: '#f8fafc', border: '1px solid rgba(51, 65, 85, 0.5)' }} 
+                      value={heartRate} 
+                      onChange={e => setHeartRate(e.target.value)} 
+                      required 
                     />
                   </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem', color: '#94a3b8', fontWeight: 800 }}>Blood Pressure</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      style={{ padding: '0.45rem', fontSize: '0.85rem', background: '#090d16', color: '#f8fafc', border: '1px solid rgba(51, 65, 85, 0.5)' }} 
+                      value={bloodPressure} 
+                      onChange={e => setBloodPressure(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem', color: '#94a3b8', fontWeight: 800 }}>SpO2 (%)</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      style={{ padding: '0.45rem', fontSize: '0.85rem', background: '#090d16', color: '#f8fafc', border: '1px solid rgba(51, 65, 85, 0.5)' }} 
+                      value={spo2} 
+                      onChange={e => setSpo2(e.target.value)} 
+                      required 
+                    />
+                  </div>
+                </div>
 
-                  <form onSubmit={handleSendTelemetry} style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.2rem' }}>Heart Rate</label>
-                        <input 
-                          type="number" 
-                          className="form-input" 
-                          style={{ padding: '0.4rem', fontSize: '0.8rem', opacity: isAutoTelemetry ? 0.75 : 1 }} 
-                          value={heartRate} 
-                          onChange={e => setHeartRate(e.target.value)} 
-                          disabled={isAutoTelemetry} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.2rem' }}>Blood Pressure</label>
-                        <input 
-                          type="text" 
-                          className="form-input" 
-                          style={{ padding: '0.4rem', fontSize: '0.8rem', opacity: isAutoTelemetry ? 0.75 : 1 }} 
-                          value={bloodPressure} 
-                          onChange={e => setBloodPressure(e.target.value)} 
-                          disabled={isAutoTelemetry} 
-                          required 
-                        />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.2rem' }}>Oxygen (SpO2)</label>
-                        <input 
-                          type="number" 
-                          className="form-input" 
-                          style={{ padding: '0.4rem', fontSize: '0.8rem', opacity: isAutoTelemetry ? 0.75 : 1 }} 
-                          value={spo2} 
-                          onChange={e => setSpo2(e.target.value)} 
-                          disabled={isAutoTelemetry} 
-                          required 
-                        />
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.2rem' }}>Condition</label>
-                        <select 
-                          className="form-input" 
-                          style={{ padding: '0.4rem', fontSize: '0.8rem', opacity: isAutoTelemetry ? 0.75 : 1 }} 
-                          value={condition} 
-                          onChange={e => setCondition(e.target.value)} 
-                          disabled={isAutoTelemetry}
-                        >
-                          <option value="Stable">Stable</option>
-                          <option value="Guarded">Guarded</option>
-                          <option value="Critical">Critical</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit" 
-                      className="btn btn-primary" 
-                      style={{ 
-                        width: '100%', 
-                        padding: '0.5rem', 
-                        fontSize: '0.8rem', 
-                        marginTop: '0.25rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '0.35rem',
-                        borderRadius: '8px'
-                      }} 
-                      disabled={telemetryLoading || isAutoTelemetry}
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.65rem', marginBottom: '0.15rem', color: '#94a3b8', fontWeight: 800 }}>Patient Condition Classification</label>
+                    <select 
+                      className="form-input" 
+                      style={{ padding: '0.45rem', fontSize: '0.85rem', background: '#090d16', color: '#f8fafc', border: '1px solid rgba(51, 65, 85, 0.5)' }} 
+                      value={condition} 
+                      onChange={e => setCondition(e.target.value)} 
                     >
-                      <Activity size={12} /> {isAutoTelemetry ? 'Auto-Syncing' : 'Send Vitals'}
-                    </button>
-                  </form>
+                      <option value="Stable">Stable</option>
+                      <option value="Guarded">Guarded</option>
+                      <option value="Critical">Critical</option>
+                    </select>
+                  </div>
+                  <button 
+                    type="submit" 
+                    className="driver-btn-tactical driver-btn-primary" 
+                    style={{ alignSelf: 'end', height: '36px', fontSize: '0.75rem' }} 
+                    disabled={telemetryLoading}
+                  >
+                    <Activity size={12} /> TRANSMIT
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+              </form>
 
-        </div>
-
-        {/* Right Column: Driver Map view with Floating GPS HUD */}
-        <div style={{ display: 'flex', flexDirection: 'column', position: 'relative', height: '100%' }}>
-          <MapComponent
-            ambulances={ambulances}
-            requests={activeJob ? [activeJob] : []}
-            hospitals={hospitals}
-            selectedRequestId={activeJob?.id}
-            ownAmbulanceId={selectedAmbulanceId}
-            showRoutes={true}
-          />
-          {isSimulating && (
-            <div style={{
-              position: 'absolute',
-              top: '15px',
-              left: '15px',
-              right: '15px',
-              zIndex: 1000,
-              background: 'rgba(15, 23, 42, 0.92)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              padding: '0.85rem 1.25rem',
-              borderRadius: '12px',
-              color: 'white',
-              display: 'flex',
-              gap: '0.75rem',
-              alignItems: 'center',
-              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.3)',
-              transition: 'all 0.3s ease-out'
-            }}>
-              <div style={{
-                background: 'rgba(56, 189, 248, 0.1)',
-                borderRadius: '50%',
-                width: '38px',
-                height: '38px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#38bdf8',
-                flexShrink: 0
-              }}>
-                <Navigation size={20} className="pulse-icon" style={{ transform: 'rotate(45deg)' }} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 'bold', fontSize: '0.75rem', color: '#38bdf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Navigation
-                  </span>
-                  <span style={{ fontSize: '0.65rem', color: '#94a3b8', background: 'rgba(255,255,255,0.08)', padding: '0.1rem 0.35rem', borderRadius: '4px' }}>
-                    Live
-                  </span>
-                </div>
-                <p style={{ fontSize: '0.85rem', color: '#f1f5f9', marginTop: '0.15rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {simulationStatus || "Calculating route..."}
-                </p>
-              </div>
             </div>
           )}
         </div>
+      ) : (
+        /* Standby console with Radar Widget */
+        <div className="driver-panel-dark" style={{ borderLeft: '4px solid #10b981', justifyContent: 'center', minHeight: '450px' }}>
+          <div className="driver-panel-header">
+            <h4 className="driver-panel-title" style={{ color: '#10b981' }}>
+              📡 CENTRAL DISPATCH STANDBY CONSOLE
+            </h4>
+            {gpsError ? (
+              <span className="driver-badge-neon" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.4)', color: '#ef4444', animation: 'none', boxShadow: 'none' }} title="Secure context (HTTPS or localhost) and location permission required.">
+                ⚠️ GPS Offline
+              </span>
+            ) : (
+              <span className="driver-badge-neon driver-badge-green">
+                Broadcasting GPS
+              </span>
+            )}
+          </div>
 
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', flex: 1, justifyContent: 'center', alignItems: 'center', padding: '2rem 0' }}>
+            <RadarScan />
+            
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '480px', margin: '0 auto', alignItems: 'center' }}>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#f8fafc', margin: 0, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Broadcasting Terminal Signal</h4>
+              <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: '1.5', margin: 0 }}>
+                Telemetry link fully synced with Gwadar Central Dispatch Gateway. Standing by for emergency assignment alerts.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Map Modal — always mounted (CSS visibility) so Leaflet state is preserved across open/close */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: isMapMaximized ? '#0f172a' : 'rgba(11, 15, 25, 0.88)',
+        backdropFilter: isMapMaximized ? 'none' : 'blur(8px)',
+        display: showMapModal ? 'flex' : 'none',
+        alignItems: 'center', justifyContent: 'center',
+        zIndex: 99999, padding: isMapMaximized ? 0 : '1.5rem',
+        transition: 'opacity 0.2s'
+      }}>
+        <div className="driver-panel-dark" style={{
+          background: '#0f172a',
+          padding: isMapMaximized ? 0 : '1rem 1.25rem 1.25rem',
+          borderRadius: isMapMaximized ? 0 : '16px',
+          width: '100%',
+          maxWidth: isMapMaximized ? '100vw' : '1000px',
+          height: isMapMaximized ? '100vh' : '85vh',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isMapMaximized ? 0 : '0.75rem',
+          position: 'relative',
+          border: isMapMaximized ? 'none' : '1px solid rgba(251,191,36,0.15)',
+          boxShadow: isMapMaximized ? 'none' : '0 24px 64px rgba(0,0,0,0.6)'
+        }}>
+          {/* Header */}
+          {!isMapMaximized && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fbbf24' }}>
+                🗺️ Route Map Overview
+                {selectedAmbulanceId && (
+                  <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600, background: 'rgba(16,185,129,0.12)', padding: '2px 8px', borderRadius: '12px' }}>
+                    ● LIVE
+                  </span>
+                )}
+              </h3>
+              <button
+                onClick={() => setShowMapModal(false)}
+                style={{
+                  background: 'rgba(239,68,68,0.12)', border: '1.5px solid rgba(239,68,68,0.3)', borderRadius: '50%',
+                  width: '34px', height: '34px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', cursor: 'pointer', fontWeight: 800, fontSize: '1rem',
+                  color: '#ef4444', transition: 'background 0.18s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239,68,68,0.12)'}
+                title="Close map"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Map — always rendered, never unmounted */}
+          <div style={{
+            flex: 1,
+            borderRadius: isMapMaximized ? 0 : '12px',
+            overflow: 'hidden',
+            border: isMapMaximized ? 'none' : '1px solid rgba(51, 65, 85, 0.5)',
+            display: 'flex',
+            position: 'relative'
+          }}>
+            <MapComponent
+              ambulances={ambulances}
+              requests={activeJob ? [activeJob] : requests}
+              hospitals={hospitals}
+              selectedRequestId={activeJob?.id}
+              ownAmbulanceId={selectedAmbulanceId}
+              showRoutes={true}
+              visible={showMapModal}
+              onMaximizeChange={setIsMapMaximized}
+              onMapClick={(coords) => {
+                console.log("Driver clicked map, updating location manually:", coords);
+                updateServerLocation(coords.latitude, coords.longitude, undefined, activeJob?.status || 'Available');
+              }}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
+

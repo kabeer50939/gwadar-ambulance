@@ -480,11 +480,44 @@ const db = {
     }
     return null;
   },
+  deleteRequest: (id) => {
+    const data = loadDb();
+    const index = data.requests.findIndex(r => r.id === id);
+    if (index !== -1) {
+      data.requests.splice(index, 1);
+      saveDb(data);
+      return true;
+    }
+    return false;
+  },
 
-  // Reset database state to seed
+  // Reset database state to clean start
   resetDb: () => {
-    saveDb(initialData);
-    return initialData;
+    const data = loadDb();
+    data.requests = [];
+    if (data.ambulances) {
+      data.ambulances = data.ambulances.map(amb => ({
+        ...amb,
+        status: 'Available',
+        trips: 0
+      }));
+    }
+    if (data.users) {
+      data.users = data.users.map(u => {
+        if (u.role === 'driver') {
+          return { ...u, trips_completed: 0 };
+        }
+        return u;
+      });
+    }
+    if (data.hospitals) {
+      data.hospitals = data.hospitals.map(h => ({
+        ...h,
+        available_beds: h.total_beds
+      }));
+    }
+    saveDb(data);
+    return data;
   }
 };
 

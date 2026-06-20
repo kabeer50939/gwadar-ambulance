@@ -328,12 +328,31 @@ app.post('/api/requests/:id/status', authenticate, requireRole(['dispatcher', 'd
 
     if (request.assigned_ambulance_id) {
       let ambStatus = 'On Duty';
-      if (status === 'Reached Patient') ambStatus = 'Reached Patient';
-      else if (status === 'At Hospital') ambStatus = 'At Hospital';
-      else if (status === 'Completed - Awaiting Verification') ambStatus = 'Awaiting Verification';
-      else if (status === 'Completed') ambStatus = 'Available';
+      const ambUpdates = {};
 
-      updatedAmbulance = db.updateAmbulance(request.assigned_ambulance_id, { status: ambStatus });
+      if (status === 'Reached Patient') {
+        ambStatus = 'Reached Patient';
+        ambUpdates.latitude = parseFloat(request.latitude);
+        ambUpdates.longitude = parseFloat(request.longitude);
+      } else if (status === 'At Hospital') {
+        ambStatus = 'At Hospital';
+        if (request.assigned_hospital_id) {
+          const hosp = db.getHospitalById(request.assigned_hospital_id);
+          if (hosp) {
+            ambUpdates.latitude = parseFloat(hosp.latitude);
+            ambUpdates.longitude = parseFloat(hosp.longitude);
+          }
+        }
+      } else if (status === 'Completed - Awaiting Verification') {
+        ambStatus = 'Awaiting Verification';
+      } else if (status === 'Completed') {
+        ambStatus = 'Available';
+      }
+
+      updatedAmbulance = db.updateAmbulance(request.assigned_ambulance_id, { 
+        status: ambStatus,
+        ...ambUpdates
+      });
     }
 
     // Auto bed decrement when at hospital
@@ -395,6 +414,65 @@ app.post('/api/requests/:id/citizen-verify', authenticate, requireRole(['citizen
     res.status(500).json({ error: error.message });
   }
 });
+
+// 7d. Bulk delete requests (Dispatcher or Chairman only)
+app.delete('/api/requests/bulk', authenticate, requireRole(['dispatcher', 'chairman']), (req, res) => {
+  try {
+    const { status } = req.query; // 'Pending' | 'Completed' | 'all'
+    if (!status) return res.status(400).json({ error: "Missing status query parameter" });
+
+    const requests = db.getRequests();
+    const toDelete = requests.filter(r => status === 'all' || r.status === status);
+
+    toDelete.forEach(request => {
+      // Free up any assigned driver and ambulance
+      if (request.assigned_driver_id) {
+        db.updateUserAmbulance(request.assigned_driver_id, null);
+      }
+      if (request.assigned_ambulance_id) {
+        db.updateAmbulance(request.assigned_ambulance_id, { status: 'Available' });
+        const amb = db.getAmbulanceById(request.assigned_ambulance_id);
+        if (amb) io.emit('ambulance:updated', amb);
+      }
+      db.deleteRequest(request.id);
+      io.emit('request:deleted', request.id);
+    });
+
+    io.emit('ticker:log', `Bulk deleted ${toDelete.length} requests of status "${status}" by ${req.user.name}`);
+    res.json({ success: true, message: `Bulk deleted ${toDelete.length} requests.` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 7c. Dismiss/delete request (Dispatcher or Chairman only)
+app.delete('/api/requests/:id', authenticate, requireRole(['dispatcher', 'chairman']), (req, res) => {
+  try {
+    const { id } = req.params;
+    const request = db.getRequestById(id);
+    if (!request) return res.status(404).json({ error: "Request not found" });
+
+    // Free up any assigned driver and ambulance
+    if (request.assigned_driver_id) {
+      db.updateUserAmbulance(request.assigned_driver_id, null);
+    }
+    if (request.assigned_ambulance_id) {
+      db.updateAmbulance(request.assigned_ambulance_id, { status: 'Available' });
+      const amb = db.getAmbulanceById(request.assigned_ambulance_id);
+      if (amb) io.emit('ambulance:updated', amb);
+    }
+
+    db.deleteRequest(id);
+
+    io.emit('request:deleted', id);
+    io.emit('ticker:log', `Incident for ${request.citizen_name} was dismissed/deleted by ${req.user.name}`);
+
+    res.json({ success: true, message: "Request dismissed/deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // 8. Patient Vitals Telemetry (Driver only)
 app.post('/api/requests/:id/telemetry', authenticate, requireRole(['driver']), (req, res) => {

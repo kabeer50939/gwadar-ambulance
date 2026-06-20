@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Activity, Truck, LogOut, Key, User, UserCheck, AlertCircle, Users, Crown, HeartPulse, Phone } from 'lucide-react';
+import { ShieldAlert, Activity, Truck, LogOut, Key, User, UserCheck, AlertCircle, Users, Crown, HeartPulse, Phone, RefreshCw, Trash2 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import CitizenApp from './views/CitizenApp';
 import Dispatcher from './views/Dispatcher';
@@ -39,7 +39,11 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showMapModal, setShowMapModal] = useState(false);
+  const [isMapMaximized, setIsMapMaximized] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showCaseManagerModal, setShowCaseManagerModal] = useState(false);
+  const [caseManagerSearch, setCaseManagerSearch] = useState('');
   const [lang, setLang] = useState('en');
 
   const triggerFetch = () => setFetchTrigger(prev => prev + 1);
@@ -87,6 +91,11 @@ export default function App() {
     socket.on('request:updated', (updatedReq) => {
       setRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
     });
+
+    socket.on('request:deleted', (deletedId) => {
+      setRequests(prev => prev.filter(r => r.id !== deletedId));
+    });
+
 
     socket.on('ambulance:updated', (updatedAmb) => {
       setAmbulances(prev => prev.map(a => a.id === updatedAmb.id ? updatedAmb : a));
@@ -199,6 +208,50 @@ export default function App() {
     setLoginPassword('');
     window.location.hash = '#/login';
   };
+
+  const deleteCase = async (id) => {
+    if (!confirm("Are you sure you want to dismiss/delete this incident? This will release any assigned driver and vehicle immediately.")) return;
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/requests/${id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        triggerFetch();
+      } else {
+        const err = await response.json();
+        alert("Error: " + err.error);
+      }
+    } catch (e) {
+      alert("Network error: " + e.message);
+    }
+  };
+
+  const deleteBulk = async (statusFilter) => {
+    const filtered = requests.filter(r => statusFilter === 'all' || r.status === statusFilter);
+    if (filtered.length === 0) {
+      alert("No cases found with this status.");
+      return;
+    }
+    if (!confirm(`Are you sure you want to delete all ${filtered.length} cases matching "${statusFilter}"? This cannot be undone.`)) return;
+    
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/requests/bulk?status=${statusFilter}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (response.ok) {
+        triggerFetch();
+        alert("Selected cases deleted successfully.");
+      } else {
+        const err = await response.json();
+        alert("Error during bulk delete: " + err.error);
+      }
+    } catch (e) {
+      alert("Error during bulk delete: " + e.message);
+    }
+  };
+
 
   // 1. Router Guards (handles hash change and logins/redirection)
   useEffect(() => {
@@ -469,7 +522,7 @@ export default function App() {
                   </span>
                 </div>
 
-                {(currentUser.role === 'chairman' || currentUser.role === 'dispatcher') && (
+                {(currentUser.role === 'chairman' || currentUser.role === 'dispatcher' || currentUser.role === 'driver' || currentUser.role === 'citizen') && (
                   <button
                     onClick={() => {
                       setShowMapModal(true);
@@ -490,7 +543,99 @@ export default function App() {
                       cursor: 'pointer'
                     }}
                   >
-                    🗺️ Live GPS Map
+                    {currentUser.role === 'citizen' ? '🗺️ Map Pin Selector' : '🗺️ Live GPS Map'}
+                  </button>
+                )}
+
+                {currentUser.role === 'citizen' && (
+                  <button
+                    onClick={() => {
+                      setShowHistoryModal(true);
+                      setShowUserMenu(false);
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      gap: '0.35rem',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      background: 'rgba(22,163,74,0.15)',
+                      color: '#86efac',
+                      border: '1px solid rgba(22,163,74,0.3)',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📋 {lang === 'ur' ? 'درخواستوں کی تاریخ' : 'Request History'}
+                  </button>
+                )}
+
+                {(currentUser.role === 'chairman' || currentUser.role === 'dispatcher') && (
+                  <button
+                    onClick={() => {
+                      setShowCaseManagerModal(true);
+                      setShowUserMenu(false);
+                    }}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      gap: '0.35rem',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      background: 'rgba(239,68,68,0.15)',
+                      color: '#fca5a5',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    ⚙️ Active Case Manager
+                  </button>
+                )}
+
+                {(currentUser.role === 'chairman' || currentUser.role === 'dispatcher') && (
+                  <button
+                    onClick={async () => {
+                      if (window.confirm("⚠️ WARNING: Are you sure you want to reset the system database? This will clear all request logs and reset ambulance/hospital availability to clean starting states. This cannot be undone!")) {
+                        try {
+                          const response = await fetch(`${BACKEND_URL}/api/reset`, {
+                            method: 'POST',
+                            headers: { 'Authorization': `Bearer ${token}` }
+                          });
+                          if (response.ok) {
+                            alert("Database reset successfully!");
+                            triggerFetch();
+                            setShowUserMenu(false);
+                          } else {
+                            const err = await response.json();
+                            alert("Error: " + err.error);
+                          }
+                        } catch (e) {
+                          alert("Network error: " + e.message);
+                        }
+                      }
+                    }}
+                    className="btn btn-danger"
+                    style={{
+                      padding: '0.5rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      gap: '0.35rem',
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      background: 'rgba(239, 68, 68, 0.2)',
+                      color: '#fca5a5',
+                      border: '1px solid rgba(239, 68, 68, 0.45)',
+                      width: '100%',
+                      cursor: 'pointer',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    ⚙️ Reset System Data
                   </button>
                 )}
 
@@ -517,6 +662,8 @@ export default function App() {
                     🚑 Citizen Portal
                   </a>
                 )}
+
+
 
                 <button
                   onClick={() => {
@@ -556,6 +703,10 @@ export default function App() {
               onNewRequestCreated={triggerFetch}
               lang={lang}
               setLang={setLang}
+              showMapModal={showMapModal}
+              setShowMapModal={setShowMapModal}
+              showHistoryModal={showHistoryModal}
+              setShowHistoryModal={setShowHistoryModal}
             />
           )}
 
@@ -581,6 +732,8 @@ export default function App() {
               hospitals={hospitals}
               requests={requests}
               triggerFetch={triggerFetch}
+              showMapModal={showMapModal}
+              setShowMapModal={setShowMapModal}
             />
           )}
 
@@ -597,8 +750,71 @@ export default function App() {
         </main>
         <InstallPrompt />
 
-        {/* Map Modal */}
-        {showMapModal && (
+        {showMapModal && currentUser?.role !== 'driver' && currentUser?.role !== 'citizen' && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: isMapMaximized ? '#0f172a' : 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: isMapMaximized ? 'none' : 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 99999, padding: isMapMaximized ? 0 : '1.5rem'
+          }}>
+            <div className="glass-panel" style={{
+              background: 'white',
+              padding: isMapMaximized ? 0 : '1.5rem',
+              borderRadius: isMapMaximized ? 0 : '16px',
+              width: '100%',
+              maxWidth: isMapMaximized ? '100vw' : '950px',
+              height: isMapMaximized ? '100vh' : '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: isMapMaximized ? 0 : '1rem',
+              boxShadow: isMapMaximized ? 'none' : 'var(--shadow-2xl)',
+              border: isMapMaximized ? 'none' : '1px solid var(--border-color)',
+              position: 'relative'
+            }}>
+              {!isMapMaximized && (
+                <>
+                  <button
+                    onClick={() => setShowMapModal(false)}
+                    style={{
+                      position: 'absolute', right: '1.25rem', top: '1.25rem',
+                      background: '#f1f5f9', border: 'none', borderRadius: '50%',
+                      width: '32px', height: '32px', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
+                    onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
+                  >
+                    ✕
+                  </button>
+                  <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    🗺️ Gwadar Live GPS Map Overview
+                  </h3>
+                </>
+              )}
+              <div style={{
+                flex: 1,
+                borderRadius: isMapMaximized ? 0 : '12px',
+                overflow: 'hidden',
+                border: isMapMaximized ? 'none' : '1px solid var(--border-color)',
+                position: 'relative'
+              }}>
+                <MapComponent
+                  ambulances={ambulances}
+                  requests={requests}
+                  hospitals={hospitals}
+                  showRoutes={true}
+                  onMaximizeChange={setIsMapMaximized}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+
+        {/* Case Manager Modal */}
+        {showCaseManagerModal && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(6px)',
@@ -607,35 +823,223 @@ export default function App() {
           }}>
             <div className="glass-panel" style={{
               background: 'white', padding: '1.5rem', borderRadius: '16px',
-              width: '100%', maxWidth: '950px', height: '80vh', display: 'flex',
+              width: '100%', maxWidth: '900px', maxHeight: '85vh', display: 'flex',
               flexDirection: 'column', gap: '1rem', boxShadow: 'var(--shadow-2xl)',
-              border: '1px solid var(--border-color)', position: 'relative'
+              border: '1px solid var(--border-color)', position: 'relative',
+              overflowY: 'auto'
             }}>
               <button
-                onClick={() => setShowMapModal(false)}
+                onClick={() => setShowCaseManagerModal(false)}
                 style={{
                   position: 'absolute', right: '1.25rem', top: '1.25rem',
                   background: '#f1f5f9', border: 'none', borderRadius: '50%',
                   width: '32px', height: '32px', display: 'flex', alignItems: 'center',
                   justifyContent: 'center', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem',
-                  transition: 'background 0.2s'
+                  transition: 'background 0.2s', zIndex: 10
                 }}
                 onMouseOver={(e) => e.target.style.background = '#e2e8f0'}
                 onMouseOut={(e) => e.target.style.background = '#f1f5f9'}
               >
                 ✕
               </button>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                🗺️ Gwadar Live GPS Map Overview
-              </h3>
-              <div style={{ flex: 1, borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                <MapComponent
-                  ambulances={ambulances}
-                  requests={requests}
-                  hospitals={hospitals}
-                  showRoutes={true}
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.75rem', gap: '1rem', flexWrap: 'wrap' }}>
+                <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a' }}>
+                  ⚙️ Active Case Database Manager
+                </h3>
+                
+                {/* Bulk controls */}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => { triggerFetch(); }}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: 'rgba(59, 130, 246, 0.05)',
+                      color: 'var(--primary-blue)',
+                      border: '1px solid rgba(59, 130, 246, 0.2)'
+                    }}
+                  >
+                    <RefreshCw size={12} /> Refresh Feed
+                  </button>
+                  <button
+                    onClick={() => deleteBulk('Pending')}
+                    className="btn btn-danger"
+                    style={{
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      color: '#ef4444',
+                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <Trash2 size={12} /> Dismiss All Pending
+                  </button>
+                  <button
+                    onClick={() => deleteBulk('Completed')}
+                    className="btn btn-secondary"
+                    style={{
+                      padding: '0.4rem 0.75rem',
+                      fontSize: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      background: 'rgba(100, 116, 139, 0.08)',
+                      color: '#64748b',
+                      border: '1px solid rgba(100, 116, 139, 0.2)',
+                      borderRadius: '8px'
+                    }}
+                  >
+                    <Trash2 size={12} /> Clear All Completed
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Control */}
+              <div style={{ position: 'relative', width: '100%' }}>
+                <input
+                  type="text"
+                  placeholder="🔍 Search cases by patient name, phone, or location..."
+                  value={caseManagerSearch}
+                  onChange={(e) => setCaseManagerSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem 1rem',
+                    fontSize: '0.85rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    outline: 'none',
+                    background: '#f8fafc',
+                    color: '#334155',
+                    transition: 'border 0.2s'
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--primary-blue)'}
+                  onBlur={(e) => e.target.style.borderColor = '#cbd5e1'}
                 />
               </div>
+
+              {/* Case table container */}
+              <div style={{ flex: 1, marginTop: '0.25rem', overflowY: 'auto' }}>
+                {(() => {
+                  const query = caseManagerSearch.toLowerCase().trim();
+                  const filteredRequests = requests.filter(r => {
+                    if (!query) return true;
+                    return (
+                      r.citizen_name?.toLowerCase().includes(query) ||
+                      r.citizen_phone?.includes(query) ||
+                      r.location_name?.toLowerCase().includes(query) ||
+                      r.emergency_type?.toLowerCase().includes(query) ||
+                      r.status?.toLowerCase().includes(query)
+                    );
+                  });
+
+                  if (filteredRequests.length === 0) {
+                    return (
+                      <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '3rem' }}>
+                        No matching incidents found in database.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem', textAlign: 'left' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b', fontWeight: 'bold' }}>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Created</th>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Patient Details</th>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Emergency</th>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Location</th>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Assigned Unit</th>
+                            <th style={{ padding: '0.6rem 0.4rem' }}>Status</th>
+                            <th style={{ padding: '0.6rem 0.4rem', textAlign: 'right' }}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredRequests.map(req => {
+                            const dateStr = new Date(req.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date(req.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' });
+                            return (
+                              <tr key={req.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '0.6rem 0.4rem', whiteSpace: 'nowrap', color: '#64748b', fontSize: '0.75rem' }}>
+                                  {dateStr}
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem', color: '#334155' }}>
+                                  <div style={{ fontWeight: 600 }}>{req.citizen_name}</div>
+                                  <div style={{ fontSize: '0.72rem', color: '#64748b' }}>📞 {req.citizen_phone}</div>
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem' }}>
+                                  <span style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.15rem 0.4rem',
+                                    borderRadius: '4px',
+                                    background: req.emergency_type === 'Cardiac Arrest' ? '#fee2e2' : req.emergency_type === 'Accident' ? '#fff7ed' : '#f1f5f9',
+                                    color: req.emergency_type === 'Cardiac Arrest' ? '#ef4444' : req.emergency_type === 'Accident' ? '#ea580c' : '#475569',
+                                    fontWeight: 'bold',
+                                    whiteSpace: 'nowrap'
+                                  }}>{req.emergency_type}</span>
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem', color: '#475569', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  📍 {req.location_name}
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem', color: '#475569' }}>
+                                  {req.assigned_ambulance_id ? (
+                                    (() => {
+                                      const amb = ambulances.find(a => a.id === req.assigned_ambulance_id);
+                                      return <span>🚑 {amb?.vehicle_number || 'Unit'}</span>;
+                                    })()
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Unassigned</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem' }}>
+                                  <span style={{
+                                    fontSize: '0.68rem',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '12px',
+                                    fontWeight: 'bold',
+                                    whiteSpace: 'nowrap',
+                                    background: req.status === 'Completed' ? '#dcfce7' : req.status === 'Pending' ? '#fffbeb' : '#e0f2fe',
+                                    color: req.status === 'Completed' ? '#15803d' : req.status === 'Pending' ? '#b45309' : '#0369a1'
+                                  }}>{req.status}</span>
+                                </td>
+                                <td style={{ padding: '0.6rem 0.4rem', textAlign: 'right' }}>
+                                  <button
+                                    onClick={() => deleteCase(req.id)}
+                                    className="btn btn-secondary"
+                                    style={{
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: 'rgba(239, 68, 68, 0.05)',
+                                      color: '#ef4444',
+                                      border: '1px solid rgba(239, 68, 68, 0.15)',
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center'
+                                    }}
+                                    title="Dismiss/Delete Case"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+
             </div>
           </div>
         )}

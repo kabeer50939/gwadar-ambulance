@@ -37,6 +37,8 @@ export default function Dispatcher({
   const [drivers, setDrivers] = useState([]);
   const [selectedDriverId, setSelectedDriverId] = useState('');
   const [isEditingAssignment, setIsEditingAssignment] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [isMapMaximized, setIsMapMaximized] = useState(false);
 
   // Fetch drivers list
   useEffect(() => {
@@ -152,6 +154,12 @@ export default function Dispatcher({
       setRequests(prev => prev.map(r => r.id === updatedReq.id ? updatedReq : r));
       setSelectedRequest(prev => prev && prev.id === updatedReq.id ? { ...prev, ...updatedReq } : prev);
     });
+
+    newSocket.on('request:deleted', (deletedId) => {
+      setRequests(prev => prev.filter(r => r.id !== deletedId));
+      setSelectedRequest(prev => prev && prev.id === deletedId ? null : prev);
+    });
+
 
     newSocket.on('ambulance:updated', (updatedAmb) => {
       setAmbulances(prev => prev.map(a => a.id === updatedAmb.id ? updatedAmb : a));
@@ -351,19 +359,6 @@ export default function Dispatcher({
     }
   };
 
-  const handleResetSystem = async () => {
-    if (window.confirm("Are you sure you want to reset the database? This deletes all logged requests and resets ambulances to Available.")) {
-      try {
-        await fetch(`${BACKEND_URL}/api/reset`, { 
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-      } catch (err) {
-        console.error("Failed to reset system", err);
-      }
-    }
-  };
-
   const sendDispChatMessage = (e) => {
     if (e) e.preventDefault();
     if (!dispChatInput.trim() || !socket || !selectedRequest) return;
@@ -403,7 +398,7 @@ export default function Dispatcher({
 
   return (
     <div className="view-container" style={{ maxWidth: '100%', padding: '1rem' }}>
-      <div className="dashboard-grid">
+      <div className="dashboard-grid" style={{ gridTemplateColumns: '310px 1fr' }}>
         
         {/* Left Column: Incidents List */}
         <div className="dashboard-sidebar glass-panel dashboard-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -425,6 +420,30 @@ export default function Dispatcher({
               <div className="stat-val" style={{ color: 'var(--primary-orange)', fontSize: '1.1rem', marginTop: '0.1rem' }}>{pendingRequests.length}</div>
             </div>
           </div>
+
+          {/* Map Button */}
+          <button
+            onClick={() => setShowMapModal(true)}
+            className="btn btn-secondary"
+            style={{ 
+              width: '100%', 
+              padding: '0.45rem', 
+              fontSize: '0.75rem',
+              borderRadius: '6px',
+              fontWeight: 'bold',
+              marginBottom: '0.75rem',
+              background: 'rgba(59,130,246,0.1)',
+              color: 'var(--primary-blue)',
+              border: '1px solid rgba(59,130,246,0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.25rem',
+              cursor: 'pointer'
+            }}
+          >
+            🗺️ Open Live Dispatch Map
+          </button>
 
           {/* Collapsible Call Center (Manual Request Logger) */}
           <div style={{ marginBottom: '0.75rem' }}>
@@ -586,25 +605,12 @@ export default function Dispatcher({
 
         </div>
 
-        {/* Middle Column: Map & Selected Request Console */}
+        {/* Middle Column: Selected Request Console */}
         <div className="dashboard-map-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '1rem' }}>
           
-          <div style={{ flex: 1, display: 'flex', minHeight: '300px' }}>
-            <MapComponent
-              ambulances={ambulances}
-              requests={requests}
-              hospitals={hospitals}
-              selectedRequestId={selectedRequest?.id}
-              onMapClick={(coords) => {
-                if (showCallCenterForm) setCcPin(coords);
-              }}
-              showRoutes={true}
-            />
-          </div>
-
           {/* Selected Incident Console Panel */}
           {!selectedRequest ? (
-            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '12px', background: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', minHeight: '160px', textAlign: 'center' }}>
+            <div className="glass-panel" style={{ padding: '1.5rem', borderRadius: '12px', background: 'white', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', minHeight: '160px', textAlign: 'center', flex: 1 }}>
               <Activity size={28} style={{ color: 'var(--primary-blue)', marginBottom: '0.5rem' }} className="pulse-icon" />
               <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', display: 'block', marginBottom: '0.15rem' }}>No Incident Selected</strong>
               <span style={{ fontSize: '0.75rem', maxWidth: '320px' }}>Select an active emergency card from the left sidebar to view telemetry, dispatch responders, and message the citizen.</span>
@@ -972,91 +978,78 @@ export default function Dispatcher({
 
         </div>
 
-        {/* Right Column: Fleet Status & Hospitals Capacity */}
-        <div className="dashboard-sidebar glass-panel dashboard-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', gap: '0.75rem' }}>
-          
-          {/* Fleet Status Card */}
-          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: '50%' }}>
-            <div className="panel-header" style={{ marginBottom: '0.5rem', paddingBottom: '0.25rem' }}>
-              <h2 className="panel-title" style={{ color: 'var(--primary-green)', fontSize: '0.95rem' }}>
-                🚑 Fleet Status
-              </h2>
-              <span className="badge badge-green" style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}>
-                {ambulances.filter(a => a.status === 'Available').length} Available
-              </span>
+      {/* Map Modal — always mounted so Leaflet state survives close/reopen */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: isMapMaximized ? '#0f172a' : 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: isMapMaximized ? 'none' : 'blur(8px)',
+        display: showMapModal ? 'flex' : 'none',
+        alignItems: 'center', justifyContent: 'center',
+        zIndex: 99999, padding: isMapMaximized ? 0 : '1.5rem'
+      }}>
+        <div className="glass-panel" style={{
+          background: 'white',
+          padding: isMapMaximized ? 0 : '1rem 1.25rem 1.25rem',
+          borderRadius: isMapMaximized ? 0 : '16px',
+          width: '100%',
+          maxWidth: isMapMaximized ? '100vw' : '1000px',
+          height: isMapMaximized ? '100vh' : '85vh',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: isMapMaximized ? 0 : '0.75rem',
+          position: 'relative',
+          border: isMapMaximized ? 'none' : '1px solid var(--border-color)',
+          boxShadow: isMapMaximized ? 'none' : 'var(--shadow-2xl)'
+        }}>
+          {/* Header */}
+          {!isMapMaximized && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-color)' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
+                🗺️ Live Dispatch Map Overview
+                <span style={{ fontSize: '0.7rem', color: '#10b981', fontWeight: 600, background: 'rgba(16,185,129,0.1)', padding: '2px 8px', borderRadius: '12px' }}>
+                  ● LIVE
+                </span>
+              </h3>
+              <button
+                onClick={() => setShowMapModal(false)}
+                style={{
+                  background: '#f1f5f9', border: '1.5px solid #e2e8f0', borderRadius: '50%',
+                  width: '34px', height: '34px', display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', cursor: 'pointer', fontWeight: 800, fontSize: '1rem',
+                  color: '#ef4444', transition: 'background 0.18s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = '#fee2e2'}
+                onMouseOut={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                title="Close map"
+              >
+                ✕
+              </button>
             </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflowY: 'auto', flex: 1, paddingRight: '0.1rem' }}>
-              {ambulances.map(amb => {
-                let badgeClass = 'badge-green';
-                if (amb.status === 'On Duty' || amb.status === 'En Route') badgeClass = 'badge-orange';
-                if (amb.status === 'Reached Patient') badgeClass = 'badge-red';
-                if (amb.status === 'At Hospital') badgeClass = 'badge-blue';
-                
-                return (
-                  <div key={amb.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 0.5rem', background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '6px' }}>
-                    <div style={{ minWidth: 0, flex: 1, marginRight: '0.25rem' }}>
-                      <strong style={{ fontSize: '0.8rem', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{amb.vehicle_number}</strong>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{amb.driver_name}</span>
-                    </div>
-                    <span className={`badge ${badgeClass}`} style={{ fontSize: '0.6rem', padding: '0.1rem 0.35rem', flexShrink: 0 }}>{amb.status}</span>
-                  </div>
-                );
-              })}
-            </div>
+          )}
+
+          {/* Map — never unmounted */}
+          <div style={{
+            flex: 1,
+            borderRadius: isMapMaximized ? 0 : '12px',
+            border: isMapMaximized ? 'none' : '1px solid var(--border-color)',
+            display: 'flex',
+            position: 'relative'
+          }}>
+            <MapComponent
+              ambulances={ambulances}
+              requests={requests}
+              hospitals={hospitals}
+              selectedRequestId={selectedRequest?.id}
+              onMapClick={(coords) => {
+                if (showCallCenterForm) setCcPin(coords);
+              }}
+              showRoutes={true}
+              visible={showMapModal}
+              onMaximizeChange={setIsMapMaximized}
+            />
           </div>
-
-          {/* Hospitals capacity overview */}
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            <div className="panel-header" style={{ marginBottom: '0.4rem', paddingBottom: '0.25rem' }}>
-              <h2 className="panel-title" style={{ color: 'var(--primary-blue)', fontSize: '0.95rem' }}>
-                🏥 Gwadar Hospitals
-              </h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', overflowY: 'auto', flex: 1, paddingRight: '0.1rem' }}>
-              {hospitals.map(hosp => (
-                <div key={hosp.id} style={{ padding: '0.45rem 0.5rem', background: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '6px', position: 'relative' }}>
-                  <strong style={{ fontSize: '0.8rem', color: '#0284c7', display: 'block', lineHeight: '1.2', paddingRight: '42px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hosp.name}</strong>
-
-                  {/* Bed Capacity Quick Adjustments */}
-                  <div style={{ position: 'absolute', top: '4px', right: '4px', display: 'flex', gap: '2px' }}>
-                    <button 
-                      onClick={() => handleAdjustBeds(hosp.id, 1)} 
-                      style={{ width: '18px', height: '18px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'white', border: '1px solid var(--border-color)', borderRadius: '4px', fontWeight: 'bold' }}
-                      title="Add Available Bed"
-                    >
-                      +
-                    </button>
-                    <button 
-                      onClick={() => handleAdjustBeds(hosp.id, -1)} 
-                      style={{ width: '18px', height: '18px', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: 'white', border: '1px solid var(--border-color)', borderRadius: '4px', fontWeight: 'bold' }}
-                      disabled={hosp.available_beds === 0}
-                      title="Remove Available Bed"
-                    >
-                      -
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem', fontSize: '0.7rem' }}>
-                    <span style={{ color: hosp.available_beds > 2 ? 'var(--text-secondary)' : 'var(--primary-orange)' }}>
-                      🛏️ Beds: <b>{hosp.available_beds}</b> / {hosp.total_beds}
-                    </span>
-                    <span style={{ color: hosp.icu_ventilators > 0 ? '#8b5cf6' : 'var(--text-muted)' }}>
-                      💨 ICU: <b>{hosp.icu_ventilators}</b>
-                    </span>
-                  </div>
-
-                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.15rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    📞 {hosp.contact_number}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
         </div>
-
+      </div>
       </div>
     </div>
   );

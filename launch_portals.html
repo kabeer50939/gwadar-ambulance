@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gwadar Ambulance - Local Portal Launcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Plus+Jakarta+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f172a;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      
+      --color-citizen: #3b82f6;
+      --color-dispatcher: #ec4899;
+      --color-driver: #f59e0b;
+      --color-chairman: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.1) 0px, transparent 50%);
+      background-attachment: fixed;
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1.5rem;
+    }
+
+    .container {
+      max-width: 1000px;
+      width: 100%;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .logo-container {
+      width: 80px;
+      height: 80px;
+      background: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      padding: 5px;
+    }
+
+    .logo-container img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 900;
+      font-size: 2.5rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 1rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 1.75rem;
+      backdrop-filter: blur(16px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      transition: all 0.3s ease;
+    }
+
+    .card.citizen::before { background: var(--color-citizen); }
+    .card.dispatcher::before { background: var(--color-dispatcher); }
+    .card.driver::before { background: var(--color-driver); }
+    .card.chairman::before { background: var(--color-chairman); }
+
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .role-badge {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 0.75rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      display: inline-block;
+    }
+
+    .citizen .role-badge { color: var(--color-citizen); }
+    .dispatcher .role-badge { color: var(--color-dispatcher); }
+    .driver .role-badge { color: var(--color-driver); }
+    .chairman .role-badge { color: var(--color-chairman); }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      font-size: 1.35rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .card-desc {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+      flex-grow: 1;
+    }
+
+    .credentials-box {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 0.75rem;
+      font-size: 0.8rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .cred-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.35rem;
+    }
+
+    .cred-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .cred-label {
+      color: var(--text-secondary);
+    }
+
+    .cred-val {
+      font-family: monospace;
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 1px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      position: relative;
+    }
+
+    .cred-val:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 0.85rem;
+      border: none;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      color: white;
+    }
+
+    .citizen .action-btn {
+      background: var(--color-citizen);
+      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+    }
+    .dispatcher .action-btn {
+      background: var(--color-dispatcher);
+      box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+    }
+    .driver .action-btn {
+      background: var(--color-driver);
+      box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+    }
+    .chairman .action-btn {
+      background: var(--color-chairman);
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .action-btn:hover {
+      transform: scale(1.02);
+      filter: brightness(1.1);
+    }
+
+    .footer {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      margin-top: auto;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      color: #3b82f6;
+      border: 1px solid rgba(59, 130, 246, 0.2);
+      padding: 0.75rem 1.5rem;
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 10000;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo-container">
+        <img src="Logo/logo.png" alt="Logo" onerror="this.src='frontend/src/assets/logo.png'">
+      </div>
+      <h1>Gwadar Ambulance</h1>
+      <div class="subtitle">GASG Emergency Portal Hub</div>
+    </header>
+
+    <div class="grid">
+      <!-- Citizen Card -->
+      <div class="card citizen">
+        <div>
+          <span class="role-badge">Anonymous Access</span>
+          <h2 class="card-title">Citizen Portal</h2>
+          <p class="card-desc">Request emergency assistance, register SOS tickets, live-track dispatched vehicles, and talk with the response unit.</p>
+        </div>
+        <div>
+          <div class="credentials-box">
+            <div class="cred-item">
+              <span class="cred-label">Login Required:</span>
+              <span style="color: #93c5fd; font-weight: bold;">None</span>
+            </div>
+            <div class="cred-item">
+              <span class="cred-label">Method:</span>
+              <span style="color: var(--text-secondary);">Auto Session Token</span>
+            </div>
+          </div>
+          <a href="http://localhost:5173/#/citizen" target="_blank" class="action-btn">Open Portal</a>
+        </div>
+      </div>
+
+      <!-- Dispatcher Card -->
+      <div class="card dispatcher">
+        <div>
+          <span class="role-badge">Command Center</span>
+          <h2 class="card-title">Dispatcher View</h2>
+          <p class="card-desc">Manage inbound distress calls, coordinate with hospital staff, allocate resources, and dispatch drivers.</p>
+        </div>
+        <div>
+          <div class="credentials-box">
+            <div class="cred-item">
+              <span class="cred-label">Username:</span>
+              <span class="cred-val" onclick="copyText('jameel')">jameel</span>
+            </div>
+            <div class="cred-item">
+              <span class="cred-label">Password:</span>
+              <span class="cred-val" onclick="copyText('123')">123</span>
+            </div>
+          </div>
+          <a href="http://localhost:5173/#/dispatcher" target="_blank" class="action-btn">Open Portal</a>
+        </div>
+      </div>
+
+      <!-- Driver Card -->
+      <div class="card driver">
+        <div>
+          <span class="role-badge">Field responder</span>
+          <h2 class="card-title">Driver Application</h2>
+          <p class="card-desc">Stream telemetry coordinates, update vehicle response status (Siren/Enroute), and upload patient vital logs.</p>
+        </div>
+        <div>
+          <div class="credentials-box">
+            <div class="cred-item">
+              <span class="cred-label">Username:</span>
+              <span class="cred-val" onclick="copyText('kabeer')">kabeer</span>
+            </div>
+            <div class="cred-item">
+              <span class="cred-label">Password:</span>
+              <span class="cred-val" onclick="copyText('123')">123</span>
+            </div>
+          </div>
+          <a href="http://localhost:5173/#/driver" target="_blank" class="action-btn">Open Portal</a>
+        </div>
+      </div>
+
+      <!-- Chairman Card -->
+      <div class="card chairman">
+        <div>
+          <span class="role-badge">Super Admin</span>
+          <h2 class="card-title">Chairman Panel</h2>
+          <p class="card-desc">Administrative hub. Register new ambulances, manage all staff logins/passwords, and audit performance stats.</p>
+        </div>
+        <div>
+          <div class="credentials-box">
+            <div class="cred-item">
+              <span class="cred-label">Username:</span>
+              <span class="cred-val" onclick="copyText('chairman')">chairman</span>
+            </div>
+            <div class="cred-item">
+              <span class="cred-label">Password:</span>
+              <span class="cred-val" onclick="copyText('chairman123')">chairman123</span>
+            </div>
+          </div>
+          <a href="http://localhost:5173/#/chairman" target="_blank" class="action-btn">Open Portal</a>
+        </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <p>Gwadar Ambulance Service Group (GASG) · Internal System Launcher</p>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast">Copied to clipboard!</div>
+
+  <script>
+    function copyText(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const toast = document.getElementById('toast');
+        toast.textContent = `Copied "${text}" to clipboard!`;
+        toast.classList.add('show');
+        setTimeout(() => {
+          toast.classList.remove('show');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>

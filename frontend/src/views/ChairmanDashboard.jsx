@@ -563,55 +563,6 @@ export default function ChairmanDashboard({ token, currentUser, hospitals, ambul
               </div>
             )}
           </div>
-
-          {/* System Maintenance & Database Control */}
-          <div className="glass-panel" style={{ padding: '1.25rem', borderRadius: '12px', background: 'white', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(239,68,68,0.1)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#b91c1c', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>
-              <Wrench size={16} /> System Maintenance & Database Controls
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0 }}>
-                Perform administrative system actions. Wiping request logs clears out active case files and resets ambulance availability, returning the database to a clean starting state.
-              </p>
-              
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '0.25rem' }}>
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  style={{
-                    padding: '0.55rem 1rem',
-                    fontSize: '0.8rem',
-                    backgroundColor: '#dc2626',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.4rem'
-                  }}
-                  onClick={async () => {
-                    if (window.confirm("Are you sure you want to reset the system database? This deletes all logged requests, emergency chats, and resets ambulances to Available.")) {
-                      try {
-                        const res = await fetch(`${BACKEND_URL}/api/reset`, {
-                          method: 'POST',
-                          headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        if (res.ok) {
-                          alert("Database reset successfully!");
-                          triggerFetch();
-                        } else {
-                          const data = await res.json();
-                          alert("Failed to reset database: " + (data.error || res.statusText));
-                        }
-                      } catch (err) {
-                        console.error("Failed to reset system", err);
-                        alert("Error contacting the server.");
-                      }
-                    }
-                  }}
-                >
-                  ⚙️ Reset System Data
-                </button>
-              </div>
-            </div>
-          </div>
         </>
       )}
 
